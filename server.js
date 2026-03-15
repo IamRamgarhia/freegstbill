@@ -392,6 +392,29 @@ app.post('/api/import', (req, res) => {
 });
 
 // ========================
+// Save PDF to local folder
+// ========================
+const INVOICES_DIR = path.join(__dirname, 'Saved Invoices');
+if (!fs.existsSync(INVOICES_DIR)) fs.mkdirSync(INVOICES_DIR, { recursive: true });
+
+app.post('/api/save-pdf', express.raw({ type: 'application/pdf', limit: '20mb' }), (req, res) => {
+  const fileName = req.query.name || `invoice-${Date.now()}.pdf`;
+  const clientName = req.query.client || 'General';
+  const month = req.query.month || new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+
+  const safeClient = clientName.replace(/[<>:"/\\|?*]/g, '-').trim() || 'General';
+  const safeMonth = month.replace(/[<>:"/\\|?*]/g, '-').trim();
+  const safeName = fileName.replace(/[<>:"/\\|?*]/g, '-');
+
+  const folderPath = path.join(INVOICES_DIR, safeClient, safeMonth);
+  if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+
+  const filePath = path.join(folderPath, safeName);
+  fs.writeFileSync(filePath, req.body);
+  res.json({ saved: true, path: filePath });
+});
+
+// ========================
 // Serve production build
 // ========================
 const distPath = path.join(__dirname, 'dist');

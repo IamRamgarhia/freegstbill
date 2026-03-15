@@ -494,9 +494,17 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
       pdf.save(fileName);
       await saveInvoiceToDB();
       clearDraft();
-      toast('Invoice downloaded & saved!', 'success');
 
       const pdfBlob = pdf.output('blob');
+
+      // Save to local "Saved Invoices" folder (Client Name / Month / file.pdf)
+      const invoiceDate = details.invoiceDate ? new Date(details.invoiceDate) : new Date();
+      const monthName = invoiceDate.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+      const clientName = client?.name || 'General';
+      const params = new URLSearchParams({ name: fileName, client: clientName, month: monthName });
+      fetch(`/api/save-pdf?${params}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: pdfBlob }).catch(() => {});
+
+      toast('Invoice downloaded & saved!', 'success');
       uploadToGoogleDrive(pdfBlob, fileName);
     } catch (err) {
       console.error(err);
@@ -534,6 +542,13 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
         }, 1500);
         toast('PDF not attached — use Download + share manually, or try on mobile.', 'info', 5000);
       }
+
+      // Save to local "Saved Invoices" folder
+      const invoiceDate = details.invoiceDate ? new Date(details.invoiceDate) : new Date();
+      const monthName = invoiceDate.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+      const clientName = client?.name || 'General';
+      const params = new URLSearchParams({ name: fileName, client: clientName, month: monthName });
+      fetch(`/api/save-pdf?${params}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: pdfBlob }).catch(() => {});
 
       await saveInvoiceToDB();
       clearDraft();
