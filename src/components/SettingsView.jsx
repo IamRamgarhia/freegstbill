@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getProfile, saveProfile, exportAllData, importData, getTermsTemplates, saveTermsTemplate, deleteTermsTemplate, getAllClients, deleteClient, getAllProfiles, saveBusinessProfile, deleteBusinessProfile, getInvoiceNumberSettings, saveInvoiceNumberSettings } from '../store';
+import { getProfile, saveProfile, exportAllData, importData, getTermsTemplates, saveTermsTemplate, deleteTermsTemplate, getAllProfiles, saveBusinessProfile, deleteBusinessProfile, getInvoiceNumberSettings, saveInvoiceNumberSettings } from '../store';
 import { INDIAN_STATES } from '../utils';
 import { Save, Upload, Download, Plus, Trash2, Image, PenTool, Cloud, CloudOff, Building2, Hash, RefreshCw } from 'lucide-react';
 import { initGoogleDrive, isConnected, disconnect } from '../services/googleDrive';
@@ -14,7 +14,6 @@ export default function SettingsView({ onSaved }) {
   const [saving, setSaving] = useState(false);
   const [termsTemplates, setTermsTemplates] = useState([]);
   const [editingTemplate, setEditingTemplate] = useState(null);
-  const [savedClients, setSavedClients] = useState([]);
   const [driveConnected, setDriveConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [businessProfiles, setBusinessProfiles] = useState([]);
@@ -31,14 +30,12 @@ export default function SettingsView({ onSaved }) {
   useEffect(() => {
     getProfile().then(setProfile);
     loadTemplates();
-    loadClients();
     loadBusinessProfiles();
     setDriveConnected(isConnected());
     getInvoiceNumberSettings().then(setInvNumSettings);
   }, []);
 
   const loadTemplates = async () => setTermsTemplates(await getTermsTemplates());
-  const loadClients = async () => setSavedClients(await getAllClients());
   const loadBusinessProfiles = async () => setBusinessProfiles(await getAllProfiles());
 
   const handleChange = (e) => {
@@ -154,7 +151,6 @@ export default function SettingsView({ onSaved }) {
       toast(`Imported: ${parts.join(', ')}`, 'success');
       if (result.hasProfile) { const p = await getProfile(); setProfile(p); if (onSaved) onSaved(p); }
       if (result.templateCount) loadTemplates();
-      if (result.clientCount) loadClients();
     } catch { toast('Invalid backup file.', 'error'); }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -197,10 +193,6 @@ export default function SettingsView({ onSaved }) {
     }
   };
 
-  // Saved clients
-  const handleDeleteClient = async (id) => {
-    if (confirm('Remove this saved client?')) { await deleteClient(id); toast('Client removed', 'success'); loadClients(); }
-  };
 
   return (
     <div className="settings-container">
@@ -442,34 +434,6 @@ export default function SettingsView({ onSaved }) {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* ---- Saved Clients ---- */}
-      <div className="glass-panel p-6 mb-6">
-        <h3 className="section-title">Saved Clients</h3>
-        <p className="page-subtitle mb-4">Clients saved while creating invoices appear here. You can delete ones you no longer need.</p>
-        {savedClients.length === 0 ? (
-          <p className="text-muted" style={{ fontSize: '0.85rem' }}>
-            No saved clients yet. Use the "Save Client" button on the invoice form to save one.
-          </p>
-        ) : (
-          <div className="template-list">
-            {savedClients.map(cli => (
-              <div key={cli.id} className="template-card">
-                <div className="template-card-header">
-                  <div>
-                    <strong>{cli.name}</strong>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
-                      {cli.state}{cli.gstin ? ` | ${cli.gstin}` : ''}
-                    </span>
-                  </div>
-                  <button className="icon-btn icon-btn-red" onClick={() => handleDeleteClient(cli.id)} title="Delete"><Trash2 size={14} /></button>
-                </div>
-                {cli.address && <p className="template-card-preview">{cli.address}</p>}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ---- Terms Templates ---- */}
