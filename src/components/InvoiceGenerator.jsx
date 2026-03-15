@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Plus, Trash2, Download, UserPlus, Users, Settings, ChevronUp, ChevronDown, MessageCircle, Check, Loader, Truck } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Download, UserPlus, Settings, ChevronUp, ChevronDown, MessageCircle, Check, Loader, Truck } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { saveBill, getNextInvoiceNumber, getTermsTemplates, getAllClients, saveClient, getProfile, getAllProducts, saveProduct, getInvoiceDisplayOptions, saveInvoiceDisplayOptions } from '../store';
@@ -115,8 +115,9 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
   const [internalNote, setInternalNote] = useState(draft?.internalNote || '');
   const [extraSections, setExtraSections] = useState(draft?.extraSections || []);
   const [savedClients, setSavedClients] = useState([]);
-  const [showClientPicker, setShowClientPicker] = useState(false);
-  const [clientSearch, setClientSearch] = useState('');
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+  const clientNameRef = useRef(null);
+  const clientSuggestionsRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [productSearch, setProductSearch] = useState({ itemId: null, query: '' });
   const [invoiceOptions, setInvoiceOptions] = useState(() => {
@@ -356,7 +357,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
 
   const selectSavedClient = (cli) => {
     setClient({ name: cli.name, address: cli.address, state: cli.state, gstin: cli.gstin });
-    setShowClientPicker(false);
+    setShowClientSuggestions(false);
     toast(`Loaded client: ${cli.name}`, 'info');
   };
 
@@ -365,7 +366,26 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
     await saveClient({ name: client.name, address: client.address, state: client.state, gstin: client.gstin });
     toast(`Client "${client.name}" saved!`, 'success');
     setSavedClients(await getAllClients());
+    setShowClientSuggestions(false);
   };
+
+  // Filter saved clients based on typed name
+  const filteredClients = client.name.trim()
+    ? savedClients.filter(cli => cli.name.toLowerCase().includes(client.name.trim().toLowerCase()))
+    : savedClients;
+  const exactMatch = savedClients.some(cli => cli.name.toLowerCase() === client.name.trim().toLowerCase());
+
+  // Close suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (clientSuggestionsRef.current && !clientSuggestionsRef.current.contains(e.target) &&
+          clientNameRef.current && !clientNameRef.current.contains(e.target)) {
+        setShowClientSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const saveInvoiceToDB = async (skipStockDeduction = false) => {
     const bill = {
@@ -704,53 +724,33 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
           <div className="glass-panel p-6 mb-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="section-title" style={{ margin: 0 }}>Billed To</h3>
-              <div className="flex gap-2">
-                {savedClients.length > 0 && (
-                  <button type="button" className="btn btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-                    onClick={() => { setShowClientPicker(!showClientPicker); setClientSearch(''); }}>
-                    <Users size={15} /> {showClientPicker ? 'Hide' : 'Search Clients'}
-                  </button>
-                )}
-                <button type="button" className="btn btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-                  onClick={handleSaveClient} title="Save current client for future use">
-                  <UserPlus size={15} /> Save Client
-                </button>
-              </div>
             </div>
 
-            {/* Client search dropdown */}
-            {showClientPicker && savedClients.length > 0 && (
-              <div className="client-picker">
-                <input
-                  type="text"
-                  className="form-input client-search-input"
-                  placeholder="Type to search clients..."
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                  autoFocus
-                />
-                <div className="client-picker-list">
-                  {savedClients
-                    .filter(cli => !clientSearch || cli.name.toLowerCase().includes(clientSearch.toLowerCase()))
-                    .map(cli => (
-                      <button key={cli.id} className="client-picker-item" onClick={() => { selectSavedClient(cli); setShowClientPicker(false); setClientSearch(''); }}>
-                        <strong>{cli.name}</strong>
-                        <span>{cli.state}{cli.gstin ? ` | ${cli.gstin}` : ''}</span>
-                      </button>
-                    ))
-                  }
-                  {savedClients.filter(cli => !clientSearch || cli.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
-                    <div className="client-picker-empty">No clients found</div>
-                  )}
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-2 gap-4">
-              <div className="form-group full-width">
+              <div className="form-group full-width" style={{ position: 'relative' }}>
                 <label className="form-label">Client Name</label>
-                <input type="text" className="form-input" value={client.name}
-                  onChange={(e) => setClient({ ...client, name: e.target.value })} placeholder="Company or Individual" />
+                <input type="text" className="form-input" value={client.name} ref={clientNameRef}
+                  onChange={(e) => { setClient({ ...client, name: e.target.value }); setShowClientSuggestions(true); }}
+                  onFocus={() => { if (savedClients.length > 0) setShowClientSuggestions(true); }}
+                  placeholder="Type client name to search or add new" autoComplete="off" />
+                {showClientSuggestions && savedClients.length > 0 && (
+                  <div className="client-suggestions" ref={clientSuggestionsRef}>
+                    {filteredClients.length > 0 && filteredClients.map(cli => (
+                      <button key={cli.id} type="button" className="client-suggestion-item" onClick={() => selectSavedClient(cli)}>
+                        <strong>{cli.name}</strong>
+                        <span>{cli.state}{cli.gstin ? ` · ${cli.gstin}` : ''}</span>
+                      </button>
+                    ))}
+                    {client.name.trim() && !exactMatch && (
+                      <button type="button" className="client-suggestion-save" onClick={handleSaveClient}>
+                        <UserPlus size={14} /> Save "{client.name.trim()}" as new client
+                      </button>
+                    )}
+                    {filteredClients.length === 0 && !client.name.trim() && (
+                      <div className="client-picker-empty">Type to search clients</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="form-group full-width">
                 <label className="form-label">Billing Address</label>

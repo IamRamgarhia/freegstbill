@@ -53,11 +53,13 @@
 [data-theme="dark"] .client-card-header:hover, [data-theme="dark"] .payment-history, [data-theme="dark"] .upload-preview { background: #1e293b; }
 [data-theme="dark"] .payment-row, [data-theme="dark"] .upload-area { border-color: #334155; }
 [data-theme="dark"] .type-badge { background: #334155; color: #94a3b8; }
-[data-theme="dark"] .product-suggestions, [data-theme="dark"] .client-picker { background: #1e293b; border-color: #334155; }
-[data-theme="dark"] .product-suggestion-item, [data-theme="dark"] .client-picker-item { border-color: #334155; }
+[data-theme="dark"] .product-suggestions, [data-theme="dark"] .client-picker, [data-theme="dark"] .client-suggestions { background: #1e293b; border-color: #334155; }
+[data-theme="dark"] .product-suggestion-item, [data-theme="dark"] .client-picker-item, [data-theme="dark"] .client-suggestion-item { border-color: #334155; }
 [data-theme="dark"] .product-suggestion-item:hover { background: #334155; }
-[data-theme="dark"] .client-picker-item { background: #0f172a; }
-[data-theme="dark"] .client-picker-item:hover { background: rgba(59,130,246,0.12); }
+[data-theme="dark"] .client-picker-item, [data-theme="dark"] .client-suggestion-item { background: #0f172a; }
+[data-theme="dark"] .client-picker-item:hover, [data-theme="dark"] .client-suggestion-item:hover { background: rgba(59,130,246,0.12); }
+[data-theme="dark"] .client-suggestion-save { border-color: #3b82f6; color: #60a5fa; }
+[data-theme="dark"] .client-suggestion-save:hover { background: rgba(59,130,246,0.12); }
 [data-theme="dark"] .extra-section-editor { background: rgba(59,130,246,0.08); border-color: #334155; }
 [data-theme="dark"] .client-actions-bar { background: #1e293b; border-color: #334155; }
 /* Force invoice preview to always be light (PDF output) */
@@ -1786,6 +1788,68 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 .client-picker-item span {
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+/* ========= Client Name Inline Suggestions ========= */
+.client-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.35rem;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.client-suggestion-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  color: var(--text);
+  width: 100%;
+}
+.client-suggestion-item:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+.client-suggestion-item strong { font-weight: 600; }
+.client-suggestion-item span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.client-suggestion-save {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.65rem;
+  background: transparent;
+  border: 1px dashed var(--primary);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--primary);
+  width: 100%;
+  transition: all 0.12s;
+}
+.client-suggestion-save:hover {
+  background: var(--primary-light);
 }
 
 /* ========= Field Hints ========= */
