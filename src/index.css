@@ -60,6 +60,7 @@
 [data-theme="dark"] .client-picker-item:hover, [data-theme="dark"] .client-suggestion-item:hover { background: rgba(59,130,246,0.12); }
 [data-theme="dark"] .client-suggestion-save { border-color: #3b82f6; color: #60a5fa; }
 [data-theme="dark"] .client-suggestion-save:hover { background: rgba(59,130,246,0.12); }
+[data-theme="dark"] .client-linked-badge { background: rgba(22,163,74,0.15); color: #4ade80; }
 [data-theme="dark"] .extra-section-editor { background: rgba(59,130,246,0.08); border-color: #334155; }
 [data-theme="dark"] .client-actions-bar { background: #1e293b; border-color: #334155; }
 /* Force invoice preview to always be light (PDF output) */
@@ -1850,6 +1851,22 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 }
 .client-suggestion-save:hover {
   background: var(--primary-light);
+}
+.client-linked-badge {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  pointer-events: none;
 }
 
 /* ========= Field Hints ========= */

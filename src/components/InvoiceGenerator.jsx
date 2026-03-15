@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Plus, Trash2, Download, UserPlus, Settings, ChevronUp, ChevronDown, MessageCircle, Check, Loader, Truck } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Download, UserPlus, Pencil, Settings, ChevronUp, ChevronDown, MessageCircle, Check, Loader, Truck } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { saveBill, getNextInvoiceNumber, getTermsTemplates, getAllClients, saveClient, getProfile, getAllProducts, saveProduct, getInvoiceDisplayOptions, saveInvoiceDisplayOptions } from '../store';
@@ -116,8 +116,10 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
   const [extraSections, setExtraSections] = useState(draft?.extraSections || []);
   const [savedClients, setSavedClients] = useState([]);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState(null);
   const clientNameRef = useRef(null);
   const clientSuggestionsRef = useRef(null);
+  const clientAutoSaveTimer = useRef(null);
   const [products, setProducts] = useState([]);
   const [productSearch, setProductSearch] = useState({ itemId: null, query: '' });
   const [invoiceOptions, setInvoiceOptions] = useState(() => {
@@ -211,7 +213,14 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
         setCustomTerms(templates[0].content);
       }
     });
-    getAllClients().then(setSavedClients);
+    getAllClients().then(clients => {
+      setSavedClients(clients);
+      // Auto-link if editing a bill with a known client
+      if (client.name.trim()) {
+        const match = clients.find(c => c.name.toLowerCase() === client.name.trim().toLowerCase());
+        if (match) setSelectedClientId(match.id);
+      }
+    });
     getAllProducts().then(setProducts);
   }, []);
 
@@ -357,17 +366,36 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
 
   const selectSavedClient = (cli) => {
     setClient({ name: cli.name, address: cli.address, state: cli.state, gstin: cli.gstin });
+    setSelectedClientId(cli.id);
     setShowClientSuggestions(false);
     toast(`Loaded client: ${cli.name}`, 'info');
   };
 
   const handleSaveClient = async () => {
     if (!client.name.trim()) { toast('Enter client name first', 'warning'); return; }
-    await saveClient({ name: client.name, address: client.address, state: client.state, gstin: client.gstin });
+    const clientData = { name: client.name, address: client.address, state: client.state, gstin: client.gstin };
+    if (selectedClientId) clientData.id = selectedClientId;
+    await saveClient(clientData);
+    const updated = await getAllClients();
+    setSavedClients(updated);
+    if (!selectedClientId) {
+      const found = updated.find(c => c.name.toLowerCase() === client.name.trim().toLowerCase());
+      if (found) setSelectedClientId(found.id);
+    }
     toast(`Client "${client.name}" saved!`, 'success');
-    setSavedClients(await getAllClients());
     setShowClientSuggestions(false);
   };
+
+  // Auto-update saved client when user edits fields (debounced 1.5s)
+  useEffect(() => {
+    if (!selectedClientId || !client.name.trim()) return;
+    clearTimeout(clientAutoSaveTimer.current);
+    clientAutoSaveTimer.current = setTimeout(async () => {
+      await saveClient({ id: selectedClientId, name: client.name, address: client.address, state: client.state, gstin: client.gstin });
+      setSavedClients(await getAllClients());
+    }, 1500);
+    return () => clearTimeout(clientAutoSaveTimer.current);
+  }, [client.name, client.address, client.state, client.gstin, selectedClientId]);
 
   // Filter saved clients based on typed name
   const filteredClients = client.name.trim()
@@ -449,7 +477,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
 
       const folderId = await findOrCreateFolder(folderName);
       await uploadPDF(fileName, pdfBlob, folderId);
-      toast('Uploaded to Google Drive!', 'success');
+      toast(`Saved to Google Drive → ${folderName}`, 'success');
     } catch (err) {
       console.error('Google Drive upload error:', err);
       toast('Google Drive upload failed: ' + err.message, 'warning');
@@ -525,7 +553,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
       const params = new URLSearchParams({ name: fileName, client: clientName, month: monthName });
       fetch(`/api/save-pdf?${params}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: pdfBlob }).catch(() => {});
 
-      toast('Invoice downloaded & saved!', 'success');
+      toast(`Invoice downloaded & saved to Saved Invoices/${clientName}/`, 'success');
       uploadToGoogleDrive(pdfBlob, fileName);
     } catch (err) {
       console.error(err);
@@ -729,11 +757,30 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
             <div className="grid grid-cols-2 gap-4">
               <div className="form-group full-width" style={{ position: 'relative' }}>
                 <label className="form-label">Client Name</label>
-                <input type="text" className="form-input" value={client.name} ref={clientNameRef}
-                  onChange={(e) => { setClient({ ...client, name: e.target.value }); setShowClientSuggestions(true); }}
-                  onFocus={() => { if (savedClients.length > 0) setShowClientSuggestions(true); }}
-                  placeholder="Type client name to search or add new" autoComplete="off" />
-                {showClientSuggestions && savedClients.length > 0 && (
+                <div style={{ position: 'relative' }}>
+                  <input type="text" className="form-input" value={client.name} ref={clientNameRef}
+                    style={selectedClientId ? { paddingRight: '6.5rem' } : undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setClient({ ...client, name: val });
+                      // If user clears or types something totally different, unlink from saved client
+                      if (selectedClientId) {
+                        const linked = savedClients.find(c => c.id === selectedClientId);
+                        if (linked && !val.toLowerCase().startsWith(linked.name.toLowerCase().substring(0, 2))) {
+                          setSelectedClientId(null);
+                        }
+                      }
+                      setShowClientSuggestions(true);
+                    }}
+                    onFocus={() => { if (savedClients.length > 0 && !selectedClientId) setShowClientSuggestions(true); }}
+                    placeholder="Type client name to search or add new" autoComplete="off" />
+                  {selectedClientId && (
+                    <span className="client-linked-badge" title="Linked to saved client — edits auto-sync">
+                      <Pencil size={12} /> Saved
+                    </span>
+                  )}
+                </div>
+                {showClientSuggestions && savedClients.length > 0 && !selectedClientId && (
                   <div className="client-suggestions" ref={clientSuggestionsRef}>
                     {filteredClients.length > 0 && filteredClients.map(cli => (
                       <button key={cli.id} type="button" className="client-suggestion-item" onClick={() => selectSavedClient(cli)}>
