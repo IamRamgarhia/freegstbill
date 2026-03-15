@@ -2,17 +2,66 @@ import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { numberToWords, formatCurrency, INVOICE_TYPES } from '../utils';
 
-const InvoicePreview = React.forwardRef(({ profile, client, details, items, totals, invoiceType = 'tax-invoice', customTerms }, ref) => {
+const InvoicePreview = React.forwardRef(({ profile, client, details, items, totals, invoiceType = 'tax-invoice', customTerms, customNotes, extraSections = [], options = {} }, ref) => {
   const businessState = profile?.state?.trim().toLowerCase();
   const clientState = client?.state?.trim().toLowerCase();
   const isInterstate = businessState && clientState && businessState !== clientState;
   const typeConfig = INVOICE_TYPES[invoiceType] || INVOICE_TYPES['tax-invoice'];
-  const showGST = typeConfig.showGST;
+
+  // Options with defaults
+  const showGST = options.showGST !== undefined ? options.showGST : typeConfig.showGST;
+  const showState = options.showState !== undefined ? options.showState : true;
+  const showGSTIN = options.showGSTIN !== undefined ? options.showGSTIN : true;
+  const showPlaceOfSupply = options.showPlaceOfSupply !== undefined ? options.showPlaceOfSupply : showGST;
+  const showHSN = options.showHSN !== undefined ? options.showHSN : true;
+  const showDiscount = options.showDiscount !== undefined ? options.showDiscount : true;
+  const showBankDetails = options.showBankDetails !== undefined ? options.showBankDetails : true;
+  const showUPI = options.showUPI !== undefined ? options.showUPI : true;
+  const showLogo = options.showLogo !== undefined ? options.showLogo : true;
+  const showSignature = options.showSignature !== undefined ? options.showSignature : true;
+  const showTerms = options.showTerms !== undefined ? options.showTerms : true;
+  const showNotes = options.showNotes !== undefined ? options.showNotes : true;
+  const showAmountWords = options.showAmountWords !== undefined ? options.showAmountWords : true;
+  const showDueDate = options.showDueDate !== undefined ? options.showDueDate : true;
+  const showItemQty = options.showItemQty !== undefined ? options.showItemQty : true;
+  const customTitle = options.customTitle || typeConfig.title;
+  const currencySymbol = options.currency || 'INR';
+
+  const fmt = (amount) => {
+    if (currencySymbol === 'INR') return formatCurrency(amount);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencySymbol, minimumFractionDigits: 2 }).format(amount || 0);
+  };
+
+  const amountInWords = (num) => {
+    if (currencySymbol === 'INR') return numberToWords(num);
+    // English number-to-words for foreign currencies
+    const currencyNames = { USD: 'Dollars', EUR: 'Euros', GBP: 'Pounds', AUD: 'Dollars', CAD: 'Dollars', SGD: 'Dollars', AED: 'Dirhams' };
+    const centsNames = { USD: 'Cents', EUR: 'Cents', GBP: 'Pence', AUD: 'Cents', CAD: 'Cents', SGD: 'Cents', AED: 'Fils' };
+    const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const convert = (n) => {
+      if (n === 0) return 'Zero';
+      let result = '';
+      if (n >= 1000000) { result += convert(Math.floor(n / 1000000)) + ' Million '; n %= 1000000; }
+      if (n >= 1000) { result += convert(Math.floor(n / 1000)) + ' Thousand '; n %= 1000; }
+      if (n >= 100) { result += a[Math.floor(n / 100)] + ' Hundred '; n %= 100; }
+      if (n >= 20) { result += b[Math.floor(n / 10)] + ' '; if (n % 10) result += a[n % 10] + ' '; }
+      else if (n > 0) { result += a[n] + ' '; }
+      return result.trim();
+    };
+    const rounded = Math.round(num * 100) / 100;
+    const whole = Math.floor(rounded);
+    const cents = Math.round((rounded - whole) * 100);
+    let result = convert(whole) + ' ' + (currencyNames[currencySymbol] || currencySymbol);
+    if (cents > 0) result += ' and ' + convert(cents) + ' ' + (centsNames[currencySymbol] || 'Cents');
+    return result + ' Only';
+  };
+
   const [qrDataUrl, setQrDataUrl] = useState('');
 
   // Generate UPI QR code
   useEffect(() => {
-    if (!profile?.upiId || !totals.total) {
+    if (!showUPI || !profile?.upiId || !totals.total || currencySymbol !== 'INR') {
       setQrDataUrl('');
       return;
     }
@@ -20,7 +69,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
     QRCode.toDataURL(upiUrl, { width: 120, margin: 1, errorCorrectionLevel: 'M' })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(''));
-  }, [profile?.upiId, profile?.businessName, totals.total, details?.invoiceNumber]);
+  }, [showUPI, profile?.upiId, profile?.businessName, totals.total, details?.invoiceNumber, currencySymbol]);
 
   const accentColors = {
     'tax-invoice': '#1e40af',
@@ -30,6 +79,9 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
   };
   const accent = accentColors[invoiceType] || accentColors['tax-invoice'];
 
+  // Check if any item has discount
+  const hasAnyDiscount = showDiscount && items.some(item => (item.discount || 0) > 0);
+
   return (
     <div className="invoice-preview-container" ref={ref} id="invoice-preview">
       <div style={{ height: '6px', background: `linear-gradient(90deg, ${accent}, ${accent}cc, ${accent}88)` }} />
@@ -37,12 +89,12 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
       {/* Header */}
       <div className="inv-header">
         <div className="inv-header-left">
-          {profile?.logo && (
+          {showLogo && profile?.logo && (
             <img src={profile.logo} alt="Logo" style={{
               maxHeight: '52px', maxWidth: '160px', objectFit: 'contain', marginBottom: '0.75rem', display: 'block'
             }} />
           )}
-          <h1 className="inv-title" style={{ color: accent }}>{typeConfig.title}</h1>
+          <h1 className="inv-title" style={{ color: accent }}>{customTitle}</h1>
           {invoiceType === 'proforma' && (
             <p style={{ fontSize: '0.7rem', color: '#94a3b8', fontStyle: 'italic', marginBottom: '0.75rem' }}>
               This is not a tax invoice. For estimation purposes only.
@@ -64,7 +116,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
                 {details?.invoiceDate ? new Date(details.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
               </span>
             </div>
-            {details?.dueDate && (
+            {showDueDate && details?.dueDate && (
               <div className="inv-meta-row">
                 <span className="inv-meta-label">Due Date</span>
                 <span className="inv-meta-value">
@@ -78,9 +130,8 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
           <h2 className="inv-business-name">{profile?.businessName || 'Your Business'}</h2>
           <div className="inv-business-details">
             {profile?.address && <p>{profile.address}</p>}
-            {profile?.state && <p>{profile.state}</p>}
-            {profile?.gstin && <p>GSTIN: <strong>{profile.gstin}</strong></p>}
-            {profile?.pan && <p>PAN: <strong>{profile.pan}</strong></p>}
+            {showState && profile?.state && <p>{profile.state}</p>}
+            {showGSTIN && profile?.gstin && <p>GSTIN: <strong>{profile.gstin}</strong></p>}
             {profile?.email && <p>{profile.email}</p>}
             {profile?.phone && <p>Ph: {profile.phone}</p>}
           </div>
@@ -94,51 +145,107 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
           <p className="inv-party-name">{client?.name || 'Client Name'}</p>
           <div className="inv-party-details">
             {client?.address && <p style={{ whiteSpace: 'pre-line' }}>{client.address}</p>}
-            {client?.state && <p>{client.state}</p>}
-            {client?.gstin && <p>GSTIN: <strong>{client.gstin}</strong></p>}
+            {showState && client?.state && <p>{client.state}</p>}
+            {showGSTIN && client?.gstin && <p>GSTIN: <strong>{client.gstin}</strong></p>}
           </div>
         </div>
-        <div className="inv-party inv-party-right">
-          <h4 className="inv-section-label">PLACE OF SUPPLY</h4>
-          <p className="inv-party-name">{details?.placeOfSupply || client?.state || '-'}</p>
-          {showGST && isInterstate && <span className="inv-tax-badge">Interstate (IGST)</span>}
-          {showGST && !isInterstate && businessState && clientState && <span className="inv-tax-badge inv-tax-badge-green">Intrastate (CGST + SGST)</span>}
-        </div>
+        {showPlaceOfSupply && (
+          <div className="inv-party inv-party-right">
+            <h4 className="inv-section-label">PLACE OF SUPPLY</h4>
+            <p className="inv-party-name">{details?.placeOfSupply || client?.state || '-'}</p>
+            {showGST && isInterstate && <span className="inv-tax-badge">Interstate (IGST)</span>}
+            {showGST && !isInterstate && businessState && clientState && <span className="inv-tax-badge inv-tax-badge-green">Intrastate (CGST + SGST)</span>}
+          </div>
+        )}
       </div>
 
       {/* Items table */}
-      <table className="inv-table">
+      <table className="inv-table" style={{ tableLayout: 'auto' }}>
         <thead>
-          <tr>
-            <th className="inv-th" style={{ width: '4%' }}>#</th>
-            <th className="inv-th" style={{ width: showGST ? '28%' : '38%' }}>Description</th>
-            <th className="inv-th inv-th-center" style={{ width: '10%' }}>HSN/SAC</th>
-            <th className="inv-th inv-th-center" style={{ width: '7%' }}>Qty</th>
-            <th className="inv-th inv-th-right" style={{ width: '13%' }}>Rate</th>
-            <th className="inv-th inv-th-right" style={{ width: '10%' }}>Disc.</th>
-            {showGST && <th className="inv-th inv-th-center" style={{ width: '8%' }}>GST</th>}
-            <th className="inv-th inv-th-right" style={{ width: showGST ? '15%' : '18%' }}>Amount</th>
-          </tr>
+          {showGST ? (
+            isInterstate ? (
+              <>
+                <tr>
+                  <th className="inv-th" rowSpan="2">#</th>
+                  <th className="inv-th" rowSpan="2">Description</th>
+                  {showHSN && <th className="inv-th inv-th-center" rowSpan="2">HSN/SAC</th>}
+                  {showItemQty && <th className="inv-th inv-th-center" rowSpan="2">Qty</th>}
+                  <th className="inv-th inv-th-right" rowSpan="2">Rate</th>
+                  {hasAnyDiscount && <th className="inv-th inv-th-right" rowSpan="2">Disc.</th>}
+                  <th className="inv-th inv-th-center" colSpan="2" style={{ borderBottom: '1px solid #cbd5e1' }}>IGST</th>
+                  <th className="inv-th inv-th-right" rowSpan="2">Amount</th>
+                </tr>
+                <tr>
+                  <th className="inv-th inv-th-center">%</th>
+                  <th className="inv-th inv-th-right">Amt</th>
+                </tr>
+              </>
+            ) : (
+              <>
+                <tr>
+                  <th className="inv-th" rowSpan="2">#</th>
+                  <th className="inv-th" rowSpan="2">Description</th>
+                  {showHSN && <th className="inv-th inv-th-center" rowSpan="2">HSN/SAC</th>}
+                  {showItemQty && <th className="inv-th inv-th-center" rowSpan="2">Qty</th>}
+                  <th className="inv-th inv-th-right" rowSpan="2">Rate</th>
+                  {hasAnyDiscount && <th className="inv-th inv-th-right" rowSpan="2">Disc.</th>}
+                  <th className="inv-th inv-th-center" colSpan="2" style={{ borderBottom: '1px solid #cbd5e1' }}>CGST</th>
+                  <th className="inv-th inv-th-center" colSpan="2" style={{ borderBottom: '1px solid #cbd5e1' }}>SGST</th>
+                  <th className="inv-th inv-th-right" rowSpan="2">Amount</th>
+                </tr>
+                <tr>
+                  <th className="inv-th inv-th-center">%</th>
+                  <th className="inv-th inv-th-right">Amt</th>
+                  <th className="inv-th inv-th-center">%</th>
+                  <th className="inv-th inv-th-right">Amt</th>
+                </tr>
+              </>
+            )
+          ) : (
+            <tr>
+              <th className="inv-th">#</th>
+              <th className="inv-th">Description</th>
+              {showHSN && <th className="inv-th inv-th-center">HSN/SAC</th>}
+              {showItemQty && <th className="inv-th inv-th-center">Qty</th>}
+              <th className="inv-th inv-th-right">Rate</th>
+              {hasAnyDiscount && <th className="inv-th inv-th-right">Disc.</th>}
+              <th className="inv-th inv-th-right">Amount</th>
+            </tr>
+          )}
         </thead>
         <tbody>
           {items.map((item, index) => {
             const lineAmount = item.quantity * item.rate;
             const discount = item.discount || 0;
             const afterDiscount = lineAmount - discount;
+            const taxRate = item.taxPercent || 0;
+            const taxAmount = afterDiscount * taxRate / 100;
+            const halfRate = taxRate / 2;
+            const halfTax = taxAmount / 2;
             return (
               <tr key={item.id} className={index % 2 === 0 ? 'inv-tr-even' : ''}>
                 <td className="inv-td inv-td-muted">{index + 1}</td>
                 <td className="inv-td inv-td-name">{item.name || '-'}</td>
-                <td className="inv-td inv-td-center inv-td-muted">{item.hsn || '-'}</td>
-                <td className="inv-td inv-td-center">{item.quantity}</td>
-                <td className="inv-td inv-td-right">{formatCurrency(item.rate)}</td>
-                <td className="inv-td inv-td-right">{discount > 0 ? formatCurrency(discount) : '-'}</td>
+                {showHSN && <td className="inv-td inv-td-center inv-td-muted">{item.hsn || '-'}</td>}
+                {showItemQty && <td className="inv-td inv-td-center">{item.quantity}</td>}
+                <td className="inv-td inv-td-right">{fmt(item.rate)}</td>
+                {hasAnyDiscount && <td className="inv-td inv-td-right">{discount > 0 ? fmt(discount) : '-'}</td>}
                 {showGST && (
-                  <td className="inv-td inv-td-center">
-                    <span className="inv-gst-pill">{item.taxPercent}%</span>
-                  </td>
+                  isInterstate ? (
+                    <>
+                      <td className="inv-td inv-td-center">{taxRate}%</td>
+                      <td className="inv-td inv-td-right">{fmt(taxAmount)}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="inv-td inv-td-center">{halfRate}%</td>
+                      <td className="inv-td inv-td-right">{fmt(halfTax)}</td>
+                      <td className="inv-td inv-td-center">{halfRate}%</td>
+                      <td className="inv-td inv-td-right">{fmt(halfTax)}</td>
+                    </>
+                  )
                 )}
-                <td className="inv-td inv-td-right inv-td-amount">{formatCurrency(afterDiscount)}</td>
+                <td className="inv-td inv-td-right inv-td-amount">{fmt(afterDiscount)}</td>
               </tr>
             );
           })}
@@ -148,8 +255,12 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
       {/* Totals section */}
       <div className="inv-totals-section">
         <div className="inv-words">
-          <h4 className="inv-section-label">AMOUNT IN WORDS</h4>
-          <p className="inv-words-text">{numberToWords(totals.total)}</p>
+          {showAmountWords && (
+            <>
+              <h4 className="inv-section-label">AMOUNT IN WORDS</h4>
+              <p className="inv-words-text">{amountInWords(totals.total)}</p>
+            </>
+          )}
           {/* UPI QR Code */}
           {qrDataUrl && (
             <div style={{ marginTop: '1.25rem' }}>
@@ -159,7 +270,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
                 <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.5 }}>
                   <p style={{ margin: 0, color: '#94a3b8' }}>UPI ID:</p>
                   <p style={{ margin: 0, color: '#334155', fontWeight: 600, fontSize: '0.75rem' }}>{profile.upiId}</p>
-                  <p style={{ margin: '0.25rem 0 0', color: '#94a3b8' }}>{formatCurrency(totals.total)}</p>
+                  <p style={{ margin: '0.25rem 0 0', color: '#94a3b8' }}>{fmt(totals.total)}</p>
                 </div>
               </div>
             </div>
@@ -169,36 +280,36 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
         <div className="inv-totals">
           <div className="inv-total-row">
             <span>Subtotal</span>
-            <span>{formatCurrency(totals.subtotal)}</span>
+            <span>{fmt(totals.subtotal)}</span>
           </div>
           {totals.totalDiscount > 0 && (
             <div className="inv-total-row" style={{ color: '#dc2626' }}>
               <span>Discount</span>
-              <span>- {formatCurrency(totals.totalDiscount)}</span>
+              <span>- {fmt(totals.totalDiscount)}</span>
             </div>
           )}
           {showGST && (
             isInterstate ? (
               <div className="inv-total-row">
                 <span>IGST</span>
-                <span>{formatCurrency(totals.igst)}</span>
+                <span>{fmt(totals.igst)}</span>
               </div>
             ) : (
               <>
                 <div className="inv-total-row">
                   <span>CGST</span>
-                  <span>{formatCurrency(totals.cgst)}</span>
+                  <span>{fmt(totals.cgst)}</span>
                 </div>
                 <div className="inv-total-row">
                   <span>SGST</span>
-                  <span>{formatCurrency(totals.sgst)}</span>
+                  <span>{fmt(totals.sgst)}</span>
                 </div>
               </>
             )
           )}
           <div className="inv-total-row inv-total-final">
             <span>{invoiceType === 'credit-note' ? 'Credit Amount' : 'Total Due'}</span>
-            <span style={{ color: accent }}>{formatCurrency(totals.total)}</span>
+            <span style={{ color: accent }}>{fmt(totals.total)}</span>
           </div>
         </div>
       </div>
@@ -206,7 +317,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
       {/* Footer */}
       <div className="inv-footer">
         <div className="inv-footer-left">
-          {profile?.bankName && (
+          {showBankDetails && profile?.bankName && (
             <div className="inv-footer-block">
               <h4 className="inv-section-label">BANK DETAILS</h4>
               <div className="inv-footer-details">
@@ -217,31 +328,51 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
               </div>
             </div>
           )}
-          {customTerms && (
+          {showTerms && customTerms && (
             <div className="inv-footer-block">
               <h4 className="inv-section-label">TERMS & CONDITIONS</h4>
               <p className="inv-terms">{customTerms}</p>
             </div>
           )}
-        </div>
-        <div className="inv-signature">
-          {profile?.signature ? (
-            <>
-              <p className="inv-sig-label">Authorized Signatory</p>
-              <img src={profile.signature} alt="Signature" style={{
-                maxHeight: '60px', maxWidth: '180px', objectFit: 'contain',
-                display: 'block', marginLeft: 'auto', marginBottom: '0.4rem'
-              }} />
-            </>
-          ) : (
-            <>
-              <p className="inv-sig-label">Authorized Signatory</p>
-              <div className="inv-sig-line" />
-            </>
+          {showNotes && customNotes && (
+            <div className="inv-footer-block">
+              <h4 className="inv-section-label">NOTES / REMARKS</h4>
+              <p className="inv-terms">{customNotes}</p>
+            </div>
           )}
-          <p className="inv-sig-name">{profile?.businessName}</p>
         </div>
+        {showSignature && profile?.signature && (
+          <div className="inv-signature">
+            <p className="inv-sig-label">Authorized Signatory</p>
+            <img src={profile.signature} alt="Signature" style={{
+              maxHeight: '60px', maxWidth: '180px', objectFit: 'contain',
+              display: 'block', marginLeft: 'auto', marginBottom: '0.4rem'
+            }} />
+            <p className="inv-sig-name">{profile?.businessName}</p>
+          </div>
+        )}
       </div>
+
+      {/* Extra Sections - each starts on new page */}
+      {(() => {
+        const filtered = extraSections.filter(s => s.title || s.content);
+        const totalPages = filtered.length > 0 ? 1 + filtered.length : 1;
+        return filtered.map((section, idx) => (
+          <div key={section.id} className="inv-extra-page" data-pdf-page={idx + 2}>
+            <div className="inv-extra-page-header">
+              <div>
+                <span className="inv-extra-ref">{customTitle} — {details?.invoiceNumber}</span>
+                {client?.name && <span className="inv-extra-ref"> | {client.name}</span>}
+              </div>
+              <span className="inv-extra-page-num">Page {idx + 2} of {totalPages}</span>
+            </div>
+            {section.title && <h4 className="inv-section-label" style={{ marginBottom: '0.75rem' }}>{section.title.toUpperCase()}</h4>}
+            {section.content && (
+              <div className="inv-extra-content" dangerouslySetInnerHTML={{ __html: section.content }} />
+            )}
+          </div>
+        ));
+      })()}
 
       {/* Watermark for proforma */}
       {invoiceType === 'proforma' && (
@@ -249,7 +380,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%) rotate(-35deg)',
           fontSize: '5rem', fontWeight: 800, color: 'rgba(124, 58, 237, 0.04)',
-          pointerEvents: 'none', whiteSpace: 'nowrap', letterSpacing: '0.1em'
+          pointerEvents: 'none', whiteSpace: 'nowrap'
         }}>
           ESTIMATE
         </div>
