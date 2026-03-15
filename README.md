@@ -49,13 +49,14 @@ BillKaro replaces paid billing software for anyone who sends invoices. If you're
 
 ## All Features
 
-### 4 Invoice Types
+### 5 Invoice Types
 | Type | Use Case |
 |------|----------|
 | **Tax Invoice** | Standard GST invoice with CGST/SGST/IGST |
 | **Proforma / Estimate** | Quotations for clients before confirmation |
 | **Bill of Supply** | Exempt goods/services or composition dealers (no GST) |
 | **Credit Note** | Returns, price adjustments, corrections |
+| **Delivery Challan** | Goods transport, job work, supply on approval (no GST) |
 
 ### Invoicing
 - Auto invoice numbers with fiscal year prefix — `INV/2025-26/0001`
@@ -65,6 +66,10 @@ BillKaro replaces paid billing software for anyone who sends invoices. If you're
 - Amount in words — Indian format (Crore, Lakh) for INR, international format (Million, Thousand) for foreign currencies
 - UPI QR code on invoice (auto-generated from your UPI ID)
 - Custom notes & remarks per invoice
+- **Private internal notes** — add notes only you can see (not printed on PDF). Useful for "follow up on 20th", "referred by Ravi", etc.
+- **Quotation → Invoice** — convert any Proforma/Estimate to Tax Invoice in one click
+- **E-Way Bill JSON** — download NIC-format JSON for e-way bill portal upload (goods > ₹50,000)
+- **Auto-save** — all invoice data auto-saves as you type. No more lost work
 - Rich-text extra pages — paste formatted content (tables, lists, headings) that render as separate PDF pages with auto page numbering
 
 ### 15 Toggle Controls
@@ -85,6 +90,10 @@ Show or hide any section on the invoice:
 - Stats — total revenue, tax collected, invoice count, outstanding
 - **Payment tracking** — record partial payments with date, mode (Bank/UPI/Cash/Cheque/Card), and notes
 - Status tracking — Unpaid, Partial, Paid, Overdue
+- **Auto-overdue detection** — invoices past due date auto-marked as overdue
+- **Overdue alert banner** — red banner at top showing count + total overdue amount
+- **Days overdue** — each overdue row shows "12d overdue" etc.
+- **Stock auto-restore** — deleting an invoice adds stock back to inventory
 
 ### Expense Tracker
 - Record business expenses with category, vendor, invoice number
@@ -291,14 +300,24 @@ billkaro/
 - [x] **Receipt / Payment Voucher** — generate payment receipts for clients.
 - [x] **Multi-Business Profiles** — switch between multiple business profiles.
 - [x] **Dark Mode** — full dark theme support.
+- [x] **Delivery Challan** — document type for goods transport, job work, supply on approval.
+- [x] **E-Way Bill JSON** — download NIC-format JSON for instant e-way bill portal upload.
+- [x] **Quotation → Invoice** — one-click conversion from Proforma/Estimate to Tax Invoice.
+- [x] **Auto-Save** — invoices auto-save to server as you type. No Save button needed.
+- [x] **Private Internal Notes** — add notes only you can see (not on PDF).
+- [x] **Auto Overdue Detection** — past-due invoices auto-marked with days overdue shown.
+- [x] **Stock Auto-Deduction** — stock reduces on invoice creation, restores on deletion.
+- [x] **Invoice Number Customization** — branded prefix, separator, financial year, digit padding.
+- [x] **PWA / Installable** — install as desktop app via Chrome/Edge. Works offline.
+- [x] **XSS Protection** — DOMPurify sanitization on all user-generated HTML content.
 
 ### Planned
 - [ ] **Invoice Reminders** — auto email/WhatsApp reminders before due date
 - [ ] **E-Invoice / IRN** — generate IRN via GST portal API (NIC e-invoice)
-- [ ] **E-Way Bill** — auto-generate for goods transport above threshold
 - [ ] **Multi-Language** — Hindi, Tamil, Marathi, Gujarati invoice support
 - [ ] **Digital Signature** — DSC integration for signed invoices
 - [ ] **Client Portal** — shareable link for clients to view & pay invoices
+- [ ] **Aging Report** — 30/60/90 day outstanding analysis per client
 
 Want a feature? Open an [issue](https://github.com/IamRamgarhia/biller/issues) or email us.
 
