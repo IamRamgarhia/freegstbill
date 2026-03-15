@@ -209,14 +209,24 @@ echo       - Click install icon in address bar
 echo.
 echo  ========================================================
 echo.
-echo  Would you like to start FreeGSTBill now? (Y/N)
-set /p START_NOW="> "
-if /i "%START_NOW%"=="Y" (
-    echo.
-    echo  Starting FreeGSTBill...
-    start "" wscript.exe "%~dp0FreeGSTBill.vbs"
-    timeout /t 3 /nobreak >nul
-    start http://localhost:3001
-)
+echo  Starting FreeGSTBill...
+echo  (Your browser will open automatically)
+echo.
+
+start "" wscript.exe "%~dp0FreeGSTBill.vbs"
+
+echo.
+echo  ========================================================
+echo.
+echo     FreeGSTBill is running!
+echo.
+echo     Next time, just:
+echo       - Double-click "FreeGSTBill" on your Desktop
+echo       - Or search "FreeGSTBill" in Start Menu
+echo.
+echo     Tip: When the app opens, click "Install App" in the
+echo     blue bar to add it as a desktop app (recommended).
+echo.
+echo  ========================================================
 echo.
 pause
