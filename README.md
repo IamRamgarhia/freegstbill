@@ -207,10 +207,41 @@ All compliance data is generated automatically from your invoices and expenses. 
 
 ---
 
-## Quick Start
+## Quick Start (Windows — Recommended)
 
-**Requires:** [Node.js](https://nodejs.org/) v18+
+1. **Download** the zip from [Releases](https://github.com/IamRamgarhia/freegstbill/releases)
+2. **Extract** the folder anywhere
+3. **Double-click** `Install FreeGSTBill.bat`
+4. The app will **open automatically** in your browser at:
 
+> ### **http://localhost:3001**
+
+That's it. Bookmark this link or install as a desktop app (see below).
+
+### After Installation
+- **To open the app** → Double-click `FreeGSTBill` on Desktop, or search "FreeGSTBill" in Start Menu
+- **Your app URL** → Always **http://localhost:3001** (bookmark this!)
+- **If the page doesn't load** → The server might not be running. Double-click `FreeGSTBill.vbs` or the Desktop shortcut to start it.
+
+### First-Time Setup
+1. The Welcome Guide will walk you through setting up your business profile
+2. Add your business name, GSTIN, PAN, bank details
+3. Upload logo & signature (optional)
+4. **New Invoice** → start billing!
+5. Create a few invoices → go to **Reports** → see GSTR-1, GSTR-3B data auto-generated
+
+### Install as Desktop App (PWA) — Recommended
+
+Install FreeGSTBill as a standalone desktop app so you never lose the tab:
+
+1. Open **http://localhost:3001** in **Chrome** or **Edge**
+2. Click the **"Install App"** blue banner at the top (or the ⊕ icon in address bar)
+3. Click **Install**
+4. Done — the app now opens in its own window, no browser needed!
+
+**To uninstall:** Right-click the app title bar → "Uninstall FreeGSTBill"
+
+### For Developers
 ```bash
 git clone https://github.com/IamRamgarhia/freegstbill.git
 cd freegstbill
@@ -222,40 +253,12 @@ npm run dev:win
 # macOS / Linux
 npm run dev
 ```
+Dev server: `http://localhost:5173` | API: `http://localhost:3001`
 
-Opens at **http://localhost:5173** — API server runs on port 3001.
-
-### First-Time Setup
-1. **Settings** → fill business profile (name, GSTIN, PAN, bank details)
-2. Upload logo & signature (optional)
-3. Add terms templates you reuse
-4. **New Invoice** → start billing
-5. Create a few invoices → go to **Reports** → see your GSTR-1, GSTR-3B, HSN data auto-generated
-
-### Production
+Production build:
 ```bash
 npm run build && npm start
 ```
-Serves from port 3001.
-
-### Install as Desktop App (PWA)
-
-FreeGSTBill can be installed as a standalone desktop app — no browser tab needed.
-
-**How to install:**
-1. Open `http://localhost:5173` (dev) or `http://localhost:3001` (production) in **Chrome** or **Edge**
-2. Look for the **install icon** (⊕) in the address bar (right side)
-3. Click it → **Install**
-4. The app opens in its own window — works like a native desktop app
-
-**How to verify PWA is working:**
-1. After installing, close the browser completely
-2. Open the app from your Start Menu / Desktop shortcut
-3. It should open in its own window (no browser UI)
-4. Disconnect from internet → create an invoice → generate PDF — everything should work
-5. Check Chrome DevTools → Application → Service Workers → should show "activated and running"
-
-**To uninstall:** Right-click the app title bar → "Uninstall FreeGSTBill", or go to `chrome://apps` and remove it.
 
 > **Note:** The PWA caches all frontend assets. The backend server (`node server.js`) still needs to be running for data to save. For a fully portable setup, use the provided `.bat` / `.vbs` launchers on Windows.
 

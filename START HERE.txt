@@ -6,19 +6,27 @@
 
   ========================================================
 
-  QUICK START (3 steps):
+  QUICK START (2 steps):
 
   1. Double-click "Install FreeGSTBill.bat"
      - This installs everything automatically
      - Wait for it to finish (1-2 minutes first time)
+     - The app will OPEN AUTOMATICALLY in your browser
 
-  2. Double-click "FreeGSTBill.vbs" (or Desktop shortcut)
-     - This starts the app
-     - Your browser will open automatically
-
-  3. Start creating invoices!
+  2. Start creating invoices!
+     - The Welcome Guide will help you set up
      - Fill in your business details (first time only)
      - Add a client and create your first invoice
+
+
+  --------------------------------------------------------
+  YOUR APP URL (bookmark this!):
+  --------------------------------------------------------
+
+     http://localhost:3001
+
+  If you close the tab, just open this link in any browser.
+  If the page doesn't load, start the app first (see below).
 
 
   --------------------------------------------------------
@@ -26,10 +34,27 @@
   --------------------------------------------------------
 
   Start the app    -> Double-click "FreeGSTBill" on Desktop
-                      (or FreeGSTBill.vbs in this folder)
+                      OR search "FreeGSTBill" in Start Menu
+                      OR double-click FreeGSTBill.vbs here
+
+  Open the app     -> Go to http://localhost:3001 in browser
+                      (or just start the app - it opens automatically)
 
   Stop the app     -> Double-click "Stop FreeGSTBill.bat"
                       (or just close the terminal window)
+
+
+  --------------------------------------------------------
+  BEST TIP: INSTALL AS DESKTOP APP
+  --------------------------------------------------------
+
+  After the app opens in your browser:
+  1. Look for the blue "Install App" bar at the top
+  2. Click "Install App"
+  3. Done! Now FreeGSTBill opens like a normal app
+     - No browser tabs to lose
+     - Find it in Start Menu
+     - Works even without internet
 
 
   --------------------------------------------------------
@@ -47,19 +72,16 @@
 
 
   --------------------------------------------------------
-  TIPS:
+  TROUBLESHOOTING:
   --------------------------------------------------------
 
-  - Install as Desktop App: Open Chrome/Edge > click install
-    icon in address bar. App will work like a native app.
+  Page doesn't load?
+    -> Double-click "FreeGSTBill" on Desktop to start the server
+    -> Then open http://localhost:3001
 
-  - Works offline: No internet needed after first install.
-
-  - GST Reports: After creating invoices, go to GST Filing
-    section - GSTR-1, GSTR-3B reports are auto-generated.
-
-  - Multi-currency: Supports INR, USD, EUR, GBP and more
-    for international clients.
+  App won't start?
+    -> Run "Install FreeGSTBill.bat" again (it won't reinstall,
+       just checks everything is set up correctly)
 
 
   --------------------------------------------------------
