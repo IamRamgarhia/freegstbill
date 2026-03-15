@@ -1,0 +1,72 @@
+
+  ========================================================
+
+     FreeGSTBill - Free GST Billing Software
+     By DiceCodes
+
+  ========================================================
+
+  QUICK START (3 steps):
+
+  1. Double-click "Install FreeGSTBill.bat"
+     - This installs everything automatically
+     - Wait for it to finish (1-2 minutes first time)
+
+  2. Double-click "FreeGSTBill.vbs" (or Desktop shortcut)
+     - This starts the app
+     - Your browser will open automatically
+
+  3. Start creating invoices!
+     - Fill in your business details (first time only)
+     - Add a client and create your first invoice
+
+
+  --------------------------------------------------------
+  DAILY USE:
+  --------------------------------------------------------
+
+  Start the app    -> Double-click "FreeGSTBill" on Desktop
+                      (or FreeGSTBill.vbs in this folder)
+
+  Stop the app     -> Double-click "Stop FreeGSTBill.bat"
+                      (or just close the terminal window)
+
+
+  --------------------------------------------------------
+  WHERE IS MY DATA?
+  --------------------------------------------------------
+
+  Invoices (PDF)   -> "Saved Invoices" folder (auto-created)
+                      Organized by: Client Name / Month / invoice.pdf
+
+  All app data     -> "data" folder (clients, bills, settings)
+                      This is YOUR data - stays on YOUR computer
+
+  Backups          -> Use Settings > Export to save a backup file
+                      Use Settings > Import to restore from backup
+
+
+  --------------------------------------------------------
+  TIPS:
+  --------------------------------------------------------
+
+  - Install as Desktop App: Open Chrome/Edge > click install
+    icon in address bar. App will work like a native app.
+
+  - Works offline: No internet needed after first install.
+
+  - GST Reports: After creating invoices, go to GST Filing
+    section - GSTR-1, GSTR-3B reports are auto-generated.
+
+  - Multi-currency: Supports INR, USD, EUR, GBP and more
+    for international clients.
+
+
+  --------------------------------------------------------
+  NEED HELP?
+  --------------------------------------------------------
+
+  GitHub: https://github.com/IamRamgarhia/freegstbill
+  Email:  Contact@dicecodes.com
+
+  ========================================================
