@@ -564,7 +564,10 @@ export default function SettingsView({ onSaved }) {
         {updateInfo?.updateAvailable && (
           <div className="update-available-box">
             <p><strong>New version v{updateInfo.latest} is available!</strong></p>
-            <p>To update, double-click <strong>Update FreeGSTBill.bat</strong> in the app folder. Your data will not be affected.</p>
+            <p>Your data will not be affected. Click below to update:</p>
+            <a href="freegstbill-update://run" className="btn btn-primary" style={{ marginTop: '0.5rem', display: 'inline-flex', textDecoration: 'none' }}>
+              <Download size={18} /> Update Now
+            </a>
           </div>
         )}
       </div>

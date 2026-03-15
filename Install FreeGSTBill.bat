@@ -231,6 +231,11 @@ if exist "%STARTUP_SHORTCUT%" (
 :: Register freegstbill:// protocol (so browser "Start Server" button works)
 powershell -Command "New-Item -Path 'HKCU:\Software\Classes\freegstbill' -Force | Out-Null; Set-ItemProperty -Path 'HKCU:\Software\Classes\freegstbill' -Name '(default)' -Value 'URL:FreeGSTBill Protocol'; New-ItemProperty -Path 'HKCU:\Software\Classes\freegstbill' -Name 'URL Protocol' -Value '' -Force | Out-Null; New-Item -Path 'HKCU:\Software\Classes\freegstbill\shell\open\command' -Force | Out-Null; Set-ItemProperty -Path 'HKCU:\Software\Classes\freegstbill\shell\open\command' -Name '(default)' -Value '%TARGET_PATH%'" 2>nul
 echo         Start button registered
+
+:: Register freegstbill-update:// protocol (so browser "Update Now" button works)
+set "UPDATE_PATH=%~dp0Update FreeGSTBill.bat"
+powershell -Command "New-Item -Path 'HKCU:\Software\Classes\freegstbill-update' -Force | Out-Null; Set-ItemProperty -Path 'HKCU:\Software\Classes\freegstbill-update' -Name '(default)' -Value 'URL:FreeGSTBill Update Protocol'; New-ItemProperty -Path 'HKCU:\Software\Classes\freegstbill-update' -Name 'URL Protocol' -Value '' -Force | Out-Null; New-Item -Path 'HKCU:\Software\Classes\freegstbill-update\shell\open\command' -Force | Out-Null; Set-ItemProperty -Path 'HKCU:\Software\Classes\freegstbill-update\shell\open\command' -Name '(default)' -Value '%UPDATE_PATH%'" 2>nul
+echo         Update button registered
 echo.
 
 :: ========================================
