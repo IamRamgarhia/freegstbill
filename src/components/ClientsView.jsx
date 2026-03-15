@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Users, Search, FileText, ChevronDown, ChevronUp, Trash2, X, MessageCircle, Mail, Plus, Edit3, Copy } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Users, Search, FileText, ChevronDown, ChevronUp, Trash2, X, MessageCircle, Mail, Plus, Edit3, Copy, Upload } from 'lucide-react';
 import { getAllClients, getAllBills, deleteClient, saveClient, deleteBill, saveBill } from '../store';
 import { formatCurrency, INVOICE_TYPES } from '../utils';
 import { toast } from './Toast';
@@ -107,6 +107,56 @@ export default function ClientsView({ onEdit, onDuplicate, onNew }) {
 
   const closeForm = () => { setShowForm(false); setModalClient(null); setEditingClientId(null); };
 
+  const csvInputRef = useRef(null);
+
+  const handleCSVImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { toast('CSV file is empty or has no data rows', 'warning'); return; }
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+      let imported = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.length === 0) continue;
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+        const name = row.name || row.client || row['client name'] || '';
+        if (!name) continue;
+        await saveClient({
+          name,
+          address: row.address || '',
+          state: row.state || '',
+          gstin: row.gstin || '',
+          email: row.email || '',
+          phone: row.phone || '',
+        });
+        imported++;
+      }
+      toast(`Imported ${imported} client${imported !== 1 ? 's' : ''}`, 'success');
+      loadData();
+    } catch {
+      toast('Failed to parse CSV file', 'error');
+    }
+    if (csvInputRef.current) csvInputRef.current.value = '';
+  };
+
+  const parseCSVLine = (line) => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; }
+      else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+      else { current += ch; }
+    }
+    result.push(current);
+    return result;
+  };
+
   const handleModalSave = async (formData) => {
     if (!formData.name.trim()) { toast('Client name is required', 'warning'); return; }
     try {
@@ -144,6 +194,10 @@ export default function ClientsView({ onEdit, onDuplicate, onNew }) {
           <p className="page-subtitle">Client-wise invoice ledger and outstanding</p>
         </div>
         <div className="flex gap-2">
+          <input type="file" accept=".csv" ref={csvInputRef} style={{ display: 'none' }} onChange={handleCSVImport} />
+          <button className="btn btn-secondary" onClick={() => csvInputRef.current?.click()}>
+            <Upload size={16} /> Import CSV
+          </button>
           <button className="btn btn-secondary" onClick={openAddClient}>
             <Plus size={18} /> Add Client
           </button>

@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 // Ensure data directory and sub-directories exist
-const DIRS = ['bills', 'clients', 'templates', 'products', 'expenses', 'recurring', 'receipts', 'profiles'];
+const DIRS = ['bills', 'clients', 'templates', 'products', 'expenses', 'recurring', 'receipts', 'profiles', 'purchases'];
 for (const dir of DIRS) {
   const dirPath = path.join(DATA_DIR, dir);
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
@@ -259,6 +259,29 @@ app.delete('/api/receipts/:id', (req, res) => {
 });
 
 // ========================
+// PURCHASES (Purchase Bills for ITC)
+// ========================
+app.get('/api/purchases', (req, res) => {
+  const purchases = readAllFromDir('purchases');
+  purchases.sort((a, b) => new Date(b.date) - new Date(a.date));
+  res.json(purchases);
+});
+
+app.post('/api/purchases', (req, res) => {
+  const purchase = req.body;
+  if (!purchase.id) purchase.id = 'pur_' + Date.now();
+  const filePath = path.join(DATA_DIR, 'purchases', safeFileName(purchase.id) + '.json');
+  writeJSON(filePath, purchase);
+  res.json({ success: true, id: purchase.id });
+});
+
+app.delete('/api/purchases/:id', (req, res) => {
+  const filePath = path.join(DATA_DIR, 'purchases', safeFileName(req.params.id) + '.json');
+  deleteFile(filePath);
+  res.json({ success: true });
+});
+
+// ========================
 // BUSINESS PROFILES (multi-business)
 // ========================
 app.get('/api/profiles', (req, res) => {
@@ -312,6 +335,7 @@ app.get('/api/export', (req, res) => {
     recurring: readAllFromDir('recurring'),
     receipts: readAllFromDir('receipts'),
     profiles: readAllFromDir('profiles'),
+    purchases: readAllFromDir('purchases'),
     meta: readJSON(META_PATH, {}),
     exportedAt: new Date().toISOString(),
   };
@@ -382,6 +406,13 @@ app.post('/api/import', (req, res) => {
     for (const prof of data.profiles) {
       if (prof.id) {
         writeJSON(path.join(DATA_DIR, 'profiles', safeFileName(prof.id) + '.json'), prof);
+      }
+    }
+  }
+  if (data.purchases && Array.isArray(data.purchases)) {
+    for (const pur of data.purchases) {
+      if (pur.id) {
+        writeJSON(path.join(DATA_DIR, 'purchases', safeFileName(pur.id) + '.json'), pur);
       }
     }
   }

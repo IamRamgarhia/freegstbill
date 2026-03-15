@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Home, FileText, Settings, Plus, Users, Package, BarChart3, Wallet, RefreshCw, Receipt, BookOpen, Moon, Sun, Download, X } from 'lucide-react';
+import { Home, FileText, Settings, Plus, Users, Package, BarChart3, Wallet, RefreshCw, Receipt, BookOpen, Moon, Sun, Download, X, ShoppingCart } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import InvoiceGenerator from './components/InvoiceGenerator';
 import SettingsView from './components/SettingsView';
@@ -10,6 +10,7 @@ import ExpenseTracker from './components/ExpenseTracker';
 import RecurringInvoices from './components/RecurringInvoices';
 import ReceiptVoucher from './components/ReceiptVoucher';
 import GSTReturns from './components/GSTReturns';
+import PurchaseBills from './components/PurchaseBills';
 import WelcomeGuide from './components/WelcomeGuide';
 import ToastContainer from './components/Toast';
 
@@ -158,9 +159,10 @@ function App() {
     { id: 'clients', icon: Users, label: 'Clients' },
     { id: 'inventory', icon: Package, label: 'Products' },
     { id: 'expenses', icon: Wallet, label: 'Expenses' },
+    { id: 'purchases', icon: ShoppingCart, label: 'Purchases' },
     { id: 'recurring', icon: RefreshCw, label: 'Recurring' },
     { id: 'receipts', icon: Receipt, label: 'Receipts' },
-    { id: 'reports', icon: BarChart3, label: 'P&L Report' },
+    { id: 'reports', icon: BarChart3, label: 'Reports' },
     { id: 'filing', icon: BookOpen, label: 'GST Returns' },
   ];
 
@@ -278,6 +280,9 @@ function App() {
         )}
         {currentView === 'expenses' && (
           <ExpenseTracker />
+        )}
+        {currentView === 'purchases' && (
+          <PurchaseBills />
         )}
         {currentView === 'recurring' && (
           <RecurringInvoices onEdit={handleEditInvoice} />

@@ -283,9 +283,11 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
           {items.map((item, index) => {
             const lineAmount = item.quantity * item.rate;
             const discount = item.discount || 0;
-            const afterDiscount = lineAmount - discount;
+            const grossAfterDiscount = lineAmount - discount;
             const taxRate = item.taxPercent || 0;
-            const taxAmount = afterDiscount * taxRate / 100;
+            const isTaxInclusive = totals.taxInclusive;
+            const afterDiscount = isTaxInclusive && showGST ? grossAfterDiscount / (1 + taxRate / 100) : grossAfterDiscount;
+            const taxAmount = isTaxInclusive && showGST ? grossAfterDiscount - afterDiscount : afterDiscount * taxRate / 100;
             const halfRate = taxRate / 2;
             const halfTax = taxAmount / 2;
             return (

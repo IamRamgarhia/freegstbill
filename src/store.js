@@ -156,6 +156,21 @@ export const deleteExpense = async (id) => {
   return apiFetch(`${API}/expenses/${encodeURIComponent(id)}`, { method: 'DELETE' });
 };
 
+// ---- Purchases (Purchase Bills for ITC) ----
+export const getAllPurchases = async () => {
+  return apiFetch(`${API}/purchases`);
+};
+
+export const savePurchase = async (purchase) => {
+  const res = await apiFetch(`${API}/purchases`, { method: 'POST', body: JSON.stringify(purchase) });
+  if (res.id) purchase.id = res.id;
+  return purchase;
+};
+
+export const deletePurchase = async (id) => {
+  return apiFetch(`${API}/purchases/${encodeURIComponent(id)}`, { method: 'DELETE' });
+};
+
 // ---- Recurring Invoices ----
 export const getAllRecurring = async () => {
   return apiFetch(`${API}/recurring`);

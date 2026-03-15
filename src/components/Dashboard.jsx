@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FileText, Trash2, Plus, IndianRupee, Receipt, Edit3, TrendingUp, Search, Copy, X, CheckCircle, Clock, AlertTriangle, MessageCircle, Mail, StickyNote } from 'lucide-react';
-import { getAllBills, deleteBill, saveBill, getAllProducts, saveProduct } from '../store';
+import { FileText, Trash2, Plus, IndianRupee, Receipt, Edit3, TrendingUp, Search, Copy, X, CheckCircle, Clock, AlertTriangle, MessageCircle, Mail, StickyNote, Send, Package } from 'lucide-react';
+import { getAllBills, deleteBill, saveBill, getAllProducts, saveProduct, getProfile, getAllClients } from '../store';
 import { formatCurrency, INVOICE_TYPES } from '../utils';
 import { toast } from './Toast';
 
@@ -34,6 +34,10 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
   const [dateTo, setDateTo] = useState('');
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentInput, setPaymentInput] = useState({ amount: '', date: '', mode: 'bank-transfer', note: '' });
+  const [showRemindAll, setShowRemindAll] = useState(false);
+  const [profile, setProfileState] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [lowStockProducts, setLowStockProducts] = useState([]);
 
   const fyOptions = getFYOptions();
 
@@ -61,7 +65,14 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
     }
   };
 
-  useEffect(() => { loadBills(); }, []);
+  useEffect(() => {
+    loadBills();
+    getProfile().then(p => setProfileState(p)).catch(() => {});
+    getAllClients().then(c => setClients(c)).catch(() => {});
+    getAllProducts().then(prods => {
+      setLowStockProducts(prods.filter(p => (p.stock ?? 0) <= 5));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let result = bills;
@@ -168,6 +179,26 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
 
   const hasFilters = search || typeFilter !== 'all' || statusFilter !== 'all' || fyFilter !== 'all' || dateFrom || dateTo;
 
+  const sendReminder = (bill) => {
+    const clientPhone = bill.clientPhone || bill.data?.client?.phone || '';
+    const phone = clientPhone.replace(/\D/g, '');
+    const clientName = bill.clientName || 'Sir/Madam';
+    const dueDate = bill.data?.details?.dueDate ? new Date(bill.data.details.dueDate).toLocaleDateString('en-IN') : 'N/A';
+    const businessName = profile?.businessName || 'Our Company';
+    const amount = formatCurrency(bill.totalAmount - (bill.paidAmount || 0));
+    const msg = `Hi ${clientName}, this is a gentle reminder that Invoice ${bill.invoiceNumber} for ${amount} was due on ${dueDate}. Kindly arrange the payment at your earliest convenience. Thank you! - ${businessName}`;
+    const encoded = encodeURIComponent(msg);
+    const waUrl = phone ? `https://api.whatsapp.com/send?phone=${phone}&text=${encoded}` : `https://api.whatsapp.com/send?text=${encoded}`;
+    window.location.href = waUrl;
+  };
+
+  const getClientPhone = (bill) => {
+    if (bill.clientPhone) return bill.clientPhone;
+    if (bill.data?.client?.phone) return bill.data.client.phone;
+    const savedClient = clients.find(c => c.name === bill.clientName);
+    return savedClient?.phone || '';
+  };
+
   const overdueBills = bills.filter(b => b.status === 'overdue');
   const overdueTotal = overdueBills.reduce((sum, b) => sum + (b.totalAmount || 0) - (b.paidAmount || 0), 0);
 
@@ -193,7 +224,51 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
               — {formatCurrency(overdueTotal)} outstanding
             </span>
           </div>
+          <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem', whiteSpace: 'nowrap' }}
+            onClick={(e) => { e.stopPropagation(); setShowRemindAll(true); }}>
+            <Send size={13} /> Remind All
+          </button>
           <span style={{ fontSize: '0.78rem', color: '#dc2626', fontWeight: 500 }}>View all &rarr;</span>
+        </div>
+      )}
+
+      {/* Remind All Modal */}
+      {showRemindAll && (
+        <div className="modal-overlay" onClick={() => setShowRemindAll(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px' }}>
+            <h3 className="section-title">Send Payment Reminders</h3>
+            <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+              Click on a client below to send a WhatsApp payment reminder.
+            </p>
+            {overdueBills.length === 0 ? (
+              <p className="text-muted">No overdue invoices.</p>
+            ) : (
+              <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+                {overdueBills.map(bill => {
+                  const phone = getClientPhone(bill);
+                  return (
+                    <div key={bill.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border)' }}>
+                      <div>
+                        <span className="font-medium">{bill.clientName}</span>
+                        <span className="text-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{bill.invoiceNumber}</span>
+                        <span style={{ marginLeft: 8, fontWeight: 600, color: '#dc2626', fontSize: '0.85rem' }}>
+                          {formatCurrency(bill.totalAmount - (bill.paidAmount || 0))}
+                        </span>
+                        {phone && <span className="text-muted" style={{ marginLeft: 8, fontSize: '0.75rem' }}>{phone}</span>}
+                      </div>
+                      <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                        onClick={() => sendReminder({ ...bill, clientPhone: phone })}>
+                        <MessageCircle size={13} /> Remind
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex gap-2 justify-end mt-4">
+              <button className="btn btn-secondary" onClick={() => setShowRemindAll(false)}>Close</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -215,6 +290,34 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
           <div><p className="stat-label">Invoices</p><h2 className="stat-value stat-value-purple">{stats.count}</h2></div>
         </div>
       </div>
+
+      {/* Low Stock Alerts */}
+      {lowStockProducts.length > 0 && (
+        <div className="glass-panel" style={{ marginBottom: '1.25rem', padding: '1rem 1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Package size={18} style={{ color: '#d97706' }} />
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#d97706' }}>
+              Low Stock Alert ({lowStockProducts.length} item{lowStockProducts.length > 1 ? 's' : ''})
+            </h3>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {lowStockProducts.map(p => (
+              <div key={p.id} style={{
+                padding: '0.4rem 0.75rem', borderRadius: 6, fontSize: '0.8rem',
+                background: (p.stock ?? 0) <= 0 ? '#fef2f2' : '#fffbeb',
+                border: `1px solid ${(p.stock ?? 0) <= 0 ? '#fecaca' : '#fde68a'}`,
+                color: (p.stock ?? 0) <= 0 ? '#dc2626' : '#d97706',
+              }}>
+                <strong>{p.name}</strong>
+                {p.hsn ? <span className="text-muted" style={{ marginLeft: 4, fontSize: '0.72rem' }}>({p.hsn})</span> : null}
+                <span style={{ marginLeft: 6, fontWeight: 700 }}>
+                  {(p.stock ?? 0) <= 0 ? 'Out of Stock' : `Stock: ${p.stock}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="glass-panel">
         <div className="table-header"><h3>Invoices</h3></div>
@@ -305,6 +408,9 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
                           )}
                           <button className="icon-btn icon-btn-green" onClick={() => openPaymentModal(bill)} title="Payment"><IndianRupee size={15} /></button>
                           <button className="icon-btn icon-btn-green" onClick={() => shareWhatsApp(bill)} title="WhatsApp"><MessageCircle size={15} /></button>
+                          {(isOverdue || status === 'overdue') && (
+                            <button className="icon-btn icon-btn-green" onClick={() => sendReminder({ ...bill, clientPhone: getClientPhone(bill) })} title="Send Reminder" style={{ color: '#d97706' }}><Send size={15} /></button>
+                          )}
                           <button className="icon-btn icon-btn-blue" onClick={() => shareEmail(bill)} title="Email"><Mail size={15} /></button>
                           <button className="icon-btn icon-btn-red" onClick={() => handleDelete(bill)} title="Delete"><Trash2 size={15} /></button>
                         </div>

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Package, Search, Plus, Edit3, Trash2, X, Save } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Package, Search, Plus, Edit3, Trash2, X, Save, Upload } from 'lucide-react';
 import { getAllProducts, saveProduct, deleteProduct } from '../store';
 import { toast } from './Toast';
 
@@ -103,6 +103,57 @@ export default function InventoryView() {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
+  const csvInputRef = useRef(null);
+
+  const parseCSVLine = (line) => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; }
+      else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+      else { current += ch; }
+    }
+    result.push(current);
+    return result;
+  };
+
+  const handleCSVImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { toast('CSV file is empty or has no data rows', 'warning'); return; }
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+      let imported = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.length === 0) continue;
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+        const name = row.name || row.product || row['product name'] || '';
+        if (!name) continue;
+        await saveProduct({
+          name,
+          hsn: row.hsn || row['hsn code'] || row['sac'] || '',
+          rate: row.rate || row.price ? parseFloat(row.rate || row.price) || 0 : 0,
+          taxPercent: row.taxpercent || row['tax%'] || row['gst%'] || row['tax'] ? parseFloat(row.taxpercent || row['tax%'] || row['gst%'] || row['tax']) || 0 : 0,
+          unit: row.unit || 'Nos',
+          stock: row.stock || row.quantity ? parseFloat(row.stock || row.quantity) || 0 : 0,
+          description: row.description || '',
+        });
+        imported++;
+      }
+      toast(`Imported ${imported} product${imported !== 1 ? 's' : ''}`, 'success');
+      loadProducts();
+    } catch {
+      toast('Failed to parse CSV file', 'error');
+    }
+    if (csvInputRef.current) csvInputRef.current.value = '';
+  };
+
   return (
     <div className="dashboard-container">
       <div className="page-header">
@@ -110,9 +161,15 @@ export default function InventoryView() {
           <h1 className="page-title">Inventory</h1>
           <p className="page-subtitle">Manage your products and services catalog</p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>
-          <Plus size={18} /> Add Product
-        </button>
+        <div className="flex gap-2">
+          <input type="file" accept=".csv" ref={csvInputRef} style={{ display: 'none' }} onChange={handleCSVImport} />
+          <button className="btn btn-secondary" onClick={() => csvInputRef.current?.click()}>
+            <Upload size={16} /> Import CSV
+          </button>
+          <button className="btn btn-primary" onClick={openAdd}>
+            <Plus size={18} /> Add Product
+          </button>
+        </div>
       </div>
 
       {/* Search */}

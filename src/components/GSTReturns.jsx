@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, Upload, ExternalLink, CheckCircle, ChevronDown, ChevronRight, AlertTriangle, BookOpen, BarChart3, ClipboardList } from 'lucide-react';
-import { getAllBills, getAllExpenses, getProfile } from '../store';
+import { FileText, Download, Upload, ExternalLink, CheckCircle, ChevronDown, ChevronRight, AlertTriangle, BookOpen, BarChart3 } from 'lucide-react';
+import { getAllBills, getAllExpenses, getAllPurchases, getProfile } from '../store';
 import { formatCurrency, INVOICE_TYPES, calculateLineItemTax, getStateCode, formatDateGST, getFilingPeriod } from '../utils';
 import { toast } from './Toast';
 
@@ -357,6 +357,7 @@ function StepList({ steps, title }) {
 export default function GSTReturns() {
   const [bills, setBills] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [purchases, setPurchases] = useState([]);
   const [profile, setProfile] = useState({});
   const [filterMode, setFilterMode] = useState('month');
   const [fyFilter, setFyFilter] = useState('');
@@ -376,8 +377,8 @@ export default function GSTReturns() {
 
   const loadData = async () => {
     try {
-      const [b, e, p] = await Promise.all([getAllBills(), getAllExpenses(), getProfile()]);
-      setBills(b); setExpenses(e); setProfile(p || {});
+      const [b, e, p, pur] = await Promise.all([getAllBills(), getAllExpenses(), getProfile(), getAllPurchases()]);
+      setBills(b); setExpenses(e); setProfile(p || {}); setPurchases(pur || []);
     } catch { toast('Failed to load data', 'error'); }
   };
 
@@ -492,11 +493,25 @@ export default function GSTReturns() {
 
   // ========== GSTR-3B ==========
   const outputTax = { cgst: grandTotals.cgst, sgst: grandTotals.sgst, igst: grandTotals.igst };
-  const itcFromExpenses = filteredExpenses.reduce((acc, e) => {
+  // ITC from expenses
+  const itcFromExpensesOnly = filteredExpenses.reduce((acc, e) => {
     const gst = e.gstAmount || 0;
     const half = Math.round((gst / 2) * 100) / 100;
     return { cgst: acc.cgst + half, sgst: acc.sgst + (gst - half), igst: acc.igst };
   }, { cgst: 0, sgst: 0, igst: 0 });
+  // ITC from purchase bills
+  const filteredPurchases = purchases.filter(p => filterByPeriod(p.date));
+  const itcFromPurchases = filteredPurchases.reduce((acc, p) => {
+    const tax = p.totalTax || (p.items || []).reduce((s, i) => s + ((i.quantity || 0) * (i.rate || 0) * (i.taxPercent || 0)) / 100, 0);
+    const half = Math.round((tax / 2) * 100) / 100;
+    return { cgst: acc.cgst + half, sgst: acc.sgst + (tax - half), igst: acc.igst };
+  }, { cgst: 0, sgst: 0, igst: 0 });
+  // Combined ITC
+  const itcFromExpenses = {
+    cgst: itcFromExpensesOnly.cgst + itcFromPurchases.cgst,
+    sgst: itcFromExpensesOnly.sgst + itcFromPurchases.sgst,
+    igst: itcFromExpensesOnly.igst + itcFromPurchases.igst,
+  };
   const netTax = {
     cgst: Math.max(0, outputTax.cgst - itcFromExpenses.cgst),
     sgst: Math.max(0, outputTax.sgst - itcFromExpenses.sgst),
@@ -744,146 +759,94 @@ export default function GSTReturns() {
   };
 
   // ========== RENDER ==========
+  const totalTax = grandTotals.cgst + grandTotals.sgst + grandTotals.igst;
+  const netPayable = netTax.igst + netTax.cgst + netTax.sgst;
+
   return (
     <div className="dashboard-container">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">GST Returns</h1>
-          <p className="page-subtitle">Self-file your GSTR-1 & GSTR-3B — all data, exports, and step-by-step guidance in one place</p>
-        </div>
-        <a href="https://gst.gov.in" target="_blank" rel="noopener noreferrer" className="btn btn-primary">
-          <ExternalLink size={16} /> Open GST Portal
-        </a>
-      </div>
-
-      {/* Important Dates */}
-      <div className="glass-panel p-4 mb-4" style={{ borderLeft: '4px solid var(--primary)' }}>
-        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', fontSize: '0.85rem' }}>
-          <div><strong>GSTR-1 Due:</strong> 11th of next month (monthly) / 13th after quarter (QRMP)</div>
-          <div><strong>GSTR-3B Due:</strong> 20th of next month (monthly) / 22nd-24th after quarter (QRMP)</div>
-          <div><strong>Late Fee:</strong> ₹50/day (₹20 for NIL) + 18% interest</div>
-        </div>
-      </div>
-
-      {/* Period Selector */}
-      <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label className="form-label">Period</label>
-            <select className="form-input" value={filterMode} onChange={e => setFilterMode(e.target.value)}>
-              <option value="month">Monthly</option>
-              <option value="quarter">Quarterly (QRMP)</option>
-              <option value="fy">Full Year</option>
-            </select>
-          </div>
+      {/* Header row: title + period selector + portal link */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>GST Returns</h1>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+          <select className="form-input" value={filterMode} onChange={e => setFilterMode(e.target.value)} style={{ width: 'auto', minWidth: '120px' }}>
+            <option value="month">Monthly</option>
+            <option value="quarter">Quarterly (QRMP)</option>
+            <option value="fy">Full Year</option>
+          </select>
           {filterMode === 'fy' ? (
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Fiscal Year</label>
-              <select className="form-input" value={fyFilter} onChange={e => setFyFilter(e.target.value)}>
-                {fyOptions.map(fy => <option key={fy.value} value={fy.value}>{fy.label}</option>)}
-              </select>
-            </div>
+            <select className="form-input" value={fyFilter} onChange={e => setFyFilter(e.target.value)} style={{ width: 'auto' }}>
+              {fyOptions.map(fy => <option key={fy.value} value={fy.value}>{fy.label}</option>)}
+            </select>
           ) : filterMode === 'quarter' ? (
             <>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Quarter</label>
-                <select className="form-input" value={quarterFilter} onChange={e => setQuarterFilter(e.target.value)}>
-                  {QUARTERS.map(q => <option key={q.id} value={q.id}>{q.label}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Year</label>
-                <select className="form-input" value={yearFilter} onChange={e => setYearFilter(e.target.value)}>
-                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
+              <select className="form-input" value={quarterFilter} onChange={e => setQuarterFilter(e.target.value)} style={{ width: 'auto' }}>
+                {QUARTERS.map(q => <option key={q.id} value={q.id}>{q.label}</option>)}
+              </select>
+              <select className="form-input" value={yearFilter} onChange={e => setYearFilter(e.target.value)} style={{ width: 'auto', minWidth: '80px' }}>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
             </>
           ) : (
             <>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Month</label>
-                <select className="form-input" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}>
-                  {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Year</label>
-                <select className="form-input" value={yearFilter} onChange={e => setYearFilter(e.target.value)}>
-                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
+              <select className="form-input" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ width: 'auto' }}>
+                {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
+              <select className="form-input" value={yearFilter} onChange={e => setYearFilter(e.target.value)} style={{ width: 'auto', minWidth: '80px' }}>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
             </>
           )}
-
-          {/* Filing status badges */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', alignItems: 'center' }}>
-            {periodFiling.gstr1 ? (
-              <span style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', borderRadius: '12px', background: '#ecfdf5', color: '#059669', fontWeight: 600 }}>GSTR-1 Filed</span>
-            ) : (
-              <span style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', borderRadius: '12px', background: '#fef2f2', color: '#dc2626', fontWeight: 600 }}>GSTR-1 Pending</span>
-            )}
-            {periodFiling.gstr3b ? (
-              <span style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', borderRadius: '12px', background: '#ecfdf5', color: '#059669', fontWeight: 600 }}>GSTR-3B Filed</span>
-            ) : (
-              <span style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', borderRadius: '12px', background: '#fef2f2', color: '#dc2626', fontWeight: 600 }}>GSTR-3B Pending</span>
-            )}
-          </div>
+          {/* Filing status */}
+          <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '10px', background: periodFiling.gstr1 ? '#ecfdf5' : '#fef2f2', color: periodFiling.gstr1 ? '#059669' : '#dc2626', fontWeight: 600 }}>
+            R1 {periodFiling.gstr1 ? 'Filed' : 'Pending'}
+          </span>
+          <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '10px', background: periodFiling.gstr3b ? '#ecfdf5' : '#fef2f2', color: periodFiling.gstr3b ? '#059669' : '#dc2626', fontWeight: 600 }}>
+            3B {periodFiling.gstr3b ? 'Filed' : 'Pending'}
+          </span>
         </div>
+        <a href="https://gst.gov.in" target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+          <ExternalLink size={14} /> GST Portal
+        </a>
       </div>
 
-      {/* Validation Warnings */}
-      {warnings.length > 0 && (
-        <div className="glass-panel p-4 mb-4" style={{ borderLeft: '4px solid #f59e0b', background: '#fffbeb' }}>
-          <h4 style={{ color: '#92400e', marginBottom: '0.5rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <AlertTriangle size={16} /> Validation Issues ({warnings.length})
-          </h4>
-          <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
-            {warnings.slice(0, 20).map((w, i) => (
-              <p key={i} style={{ fontSize: '0.8rem', color: w.type === 'error' ? '#dc2626' : '#a16207', margin: '0.2rem 0', lineHeight: 1.5 }}>
-                {w.type === 'error' ? '✗' : '⚠'} {w.msg}
-              </p>
-            ))}
-            {warnings.length > 20 && <p style={{ fontSize: '0.8rem', color: '#a16207' }}>...and {warnings.length - 20} more</p>}
-          </div>
+      {/* Warnings — collapsed by default, only errors show */}
+      {warnings.filter(w => w.type === 'error').length > 0 && (
+        <div style={{ padding: '0.5rem 0.75rem', marginBottom: '0.75rem', borderRadius: '8px', background: 'var(--danger-light, #fef2f2)', fontSize: '0.8rem', color: '#dc2626' }}>
+          <AlertTriangle size={13} style={{ verticalAlign: '-2px', marginRight: '0.35rem' }} />
+          {warnings.filter(w => w.type === 'error').slice(0, 3).map(w => w.msg).join(' | ')}
         </div>
       )}
 
-      {/* NIL Return */}
+      {/* NIL Return notice */}
       {isNilReturn && (
-        <div className="glass-panel p-4 mb-4" style={{ borderLeft: '4px solid #f59e0b', background: '#fffbeb' }}>
-          <h4 style={{ color: '#92400e', marginBottom: '0.25rem' }}>NIL Return Period</h4>
-          <p style={{ fontSize: '0.85rem', color: '#a16207' }}>
-            No invoices or expenses found. You should file a NIL return on the GST portal.
-            NIL returns are mandatory — skipping leads to ₹20/day penalty and possible GSTIN cancellation after 6 months.
-          </p>
+        <div style={{ padding: '0.5rem 0.75rem', marginBottom: '0.75rem', borderRadius: '8px', background: '#fffbeb', fontSize: '0.8rem', color: '#92400e' }}>
+          No invoices or expenses found — file a NIL return on the GST portal. NIL returns are mandatory.
         </div>
       )}
 
-      {/* Summary Cards */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: '1rem' }}>
-        <div className="stat-card">
-          <div><p className="stat-label">Total Invoices</p><h2 className="stat-value">{filteredBills.length}</h2></div>
-        </div>
-        <div className="stat-card">
-          <div><p className="stat-label">Taxable Value</p><h2 className="stat-value" style={{ fontSize: '1.1rem' }}>{formatCurrency(grandTotals.taxable)}</h2></div>
-        </div>
-        <div className="stat-card">
-          <div><p className="stat-label">Total Tax</p><h2 className="stat-value" style={{ fontSize: '1.1rem' }}>{formatCurrency(grandTotals.cgst + grandTotals.sgst + grandTotals.igst)}</h2></div>
-        </div>
-        <div className="stat-card">
-          <div><p className="stat-label">Net Tax Payable</p><h2 className="stat-value" style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>{formatCurrency(netTax.igst + netTax.cgst + netTax.sgst)}</h2></div>
+      {/* Compact summary + tabs in one row */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <div className="glass-panel" style={{ padding: '0.75rem 1rem', flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <div><p className="stat-label" style={{ margin: 0, fontSize: '0.7rem' }}>Invoices</p><strong style={{ fontSize: '1.25rem' }}>{filteredBills.length}</strong></div>
+          <div style={{ width: '1px', height: '2rem', background: 'var(--border)' }} />
+          <div><p className="stat-label" style={{ margin: 0, fontSize: '0.7rem' }}>Taxable</p><strong style={{ fontSize: '1rem' }}>{formatCurrency(grandTotals.taxable)}</strong></div>
+          <div style={{ width: '1px', height: '2rem', background: 'var(--border)' }} />
+          <div><p className="stat-label" style={{ margin: 0, fontSize: '0.7rem' }}>Tax</p><strong style={{ fontSize: '1rem' }}>{formatCurrency(totalTax)}</strong></div>
+          <div style={{ width: '1px', height: '2rem', background: 'var(--border)' }} />
+          <div><p className="stat-label" style={{ margin: 0, fontSize: '0.7rem' }}>Net Payable</p><strong style={{ fontSize: '1rem', color: 'var(--primary)' }}>{formatCurrency(netPayable)}</strong></div>
         </div>
       </div>
 
-      {/* Tab Selector */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '1rem' }}>
         {[
           { id: 'gstr1', label: 'GSTR-1', icon: BarChart3 },
           { id: 'gstr3b', label: 'GSTR-3B', icon: FileText },
           { id: 'guide', label: 'Filing Guide', icon: BookOpen },
         ].map(tab => (
-          <button key={tab.id} className={`btn ${activeTab === tab.id ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab(tab.id)}>
-            <tab.icon size={16} /> {tab.label}
+          <button key={tab.id} className={`btn ${activeTab === tab.id ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveTab(tab.id)} style={{ fontSize: '0.82rem', padding: '0.4rem 0.75rem' }}>
+            <tab.icon size={14} /> {tab.label}
           </button>
         ))}
       </div>
@@ -891,18 +854,17 @@ export default function GSTReturns() {
       {/* ===================== GSTR-1 TAB ===================== */}
       {activeTab === 'gstr1' && (
         <>
-          {/* Export bar */}
-          <div className="glass-panel p-3 mb-4" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem', marginRight: '0.5rem' }}>Export:</span>
-            <button className="btn btn-primary" onClick={exportGSTR1JSON} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}><Upload size={14} /> GSTR-1 JSON</button>
-            <button className="btn btn-secondary" onClick={exportB2B} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}><Download size={14} /> B2B CSV</button>
-            <button className="btn btn-secondary" onClick={exportB2C} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}><Download size={14} /> B2C CSV</button>
-            <button className="btn btn-secondary" onClick={exportHSN} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}><Download size={14} /> HSN CSV</button>
-            <button className="btn btn-secondary" onClick={exportCDNR} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}><Download size={14} /> CDNR CSV</button>
-            <button className="btn btn-secondary" onClick={exportDocSummary} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}><Download size={14} /> Docs CSV</button>
+          {/* Actions bar */}
+          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn btn-primary" onClick={exportGSTR1JSON} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}><Upload size={13} /> JSON Export</button>
+            <button className="btn btn-secondary" onClick={exportB2B} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}><Download size={13} /> B2B</button>
+            <button className="btn btn-secondary" onClick={exportB2C} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}><Download size={13} /> B2C</button>
+            <button className="btn btn-secondary" onClick={exportHSN} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}><Download size={13} /> HSN</button>
+            <button className="btn btn-secondary" onClick={exportCDNR} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}><Download size={13} /> CDNR</button>
+            <button className="btn btn-secondary" onClick={exportDocSummary} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}><Download size={13} /> Docs</button>
             {!periodFiling.gstr1 && (
-              <button className="btn btn-secondary" onClick={() => markFiled('gstr1')} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', marginLeft: 'auto', color: '#059669', borderColor: '#bbf7d0' }}>
-                <CheckCircle size={14} /> Mark GSTR-1 as Filed
+              <button className="btn btn-secondary" onClick={() => markFiled('gstr1')} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', marginLeft: 'auto', color: '#059669', borderColor: '#bbf7d0' }}>
+                <CheckCircle size={13} /> Mark Filed
               </button>
             )}
           </div>
@@ -910,11 +872,11 @@ export default function GSTReturns() {
           {/* B2B — Table 4A */}
           <div className="glass-panel mb-4">
             <div className="table-header">
-              <h3>B2B Sales — Table 4A (Clients with GSTIN)</h3>
-              <span className="text-muted" style={{ fontSize: '0.85rem' }}>{b2bRows.length} invoice{b2bRows.length !== 1 ? 's' : ''}</span>
+              <h3>B2B Sales — Table 4A</h3>
+              <span className="text-muted" style={{ fontSize: '0.82rem' }}>{b2bRows.length} invoice{b2bRows.length !== 1 ? 's' : ''}</span>
             </div>
             {b2bRows.length === 0 ? (
-              <div className="empty-state"><FileText size={40} /><p>No B2B invoices for this period.</p></div>
+              <p style={{ padding: '1rem 1.25rem', margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>No B2B invoices for this period.</p>
             ) : (
               <div className="table-scroll">
                 <table className="data-table">
@@ -985,17 +947,17 @@ export default function GSTReturns() {
             </div>
           )}
 
-          {/* B2C — Table 7 */}
+          {/* B2C — Table 7 (only show if data exists) */}
           <div className="glass-panel mb-4">
             <div className="table-header">
-              <h3>B2C Sales — Table 7 (Without GSTIN)</h3>
-              <span className="text-muted" style={{ fontSize: '0.85rem' }}>
+              <h3>B2C Sales — Table 7</h3>
+              <span className="text-muted" style={{ fontSize: '0.82rem' }}>
                 {b2cBills.length} invoice{b2cBills.length !== 1 ? 's' : ''}
-                {b2cLarge.length > 0 && <> ({b2cLarge.length} B2C Large &gt;₹2.5L)</>}
+                {b2cLarge.length > 0 && <> ({b2cLarge.length} B2C Large)</>}
               </span>
             </div>
             {b2cRates.length === 0 ? (
-              <div className="empty-state"><FileText size={40} /><p>No B2C invoices for this period.</p></div>
+              <p style={{ padding: '1rem 1.25rem', margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>No B2C invoices for this period.</p>
             ) : (
               <div className="table-scroll">
                 <table className="data-table">
@@ -1032,10 +994,10 @@ export default function GSTReturns() {
           <div className="glass-panel mb-4">
             <div className="table-header">
               <h3>HSN Summary — Table 12</h3>
-              <span className="text-muted" style={{ fontSize: '0.85rem' }}>{hsnRows.length} HSN code{hsnRows.length !== 1 ? 's' : ''}</span>
+              <span className="text-muted" style={{ fontSize: '0.82rem' }}>{hsnRows.length} code{hsnRows.length !== 1 ? 's' : ''}</span>
             </div>
             {hsnRows.length === 0 ? (
-              <div className="empty-state"><FileText size={40} /><p>No items found.</p></div>
+              <p style={{ padding: '1rem 1.25rem', margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>No items found.</p>
             ) : (
               <div className="table-scroll">
                 <table className="data-table">
@@ -1072,7 +1034,7 @@ export default function GSTReturns() {
           <div className="glass-panel mb-4">
             <div className="table-header"><h3>Document Summary — Table 13</h3></div>
             {Object.keys(docSummary).length === 0 ? (
-              <div className="empty-state"><FileText size={40} /><p>No documents issued.</p></div>
+              <p style={{ padding: '1rem 1.25rem', margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>No documents issued.</p>
             ) : (
               <div className="table-scroll">
                 <table className="data-table" style={{ minWidth: '400px' }}>
@@ -1117,12 +1079,12 @@ export default function GSTReturns() {
       {/* ===================== GSTR-3B TAB ===================== */}
       {activeTab === 'gstr3b' && (
         <>
-          {/* Export bar */}
-          <div className="glass-panel p-3 mb-4" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <button className="btn btn-secondary" onClick={exportGSTR3B} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}><Download size={14} /> GSTR-3B Summary CSV</button>
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem', alignItems: 'center' }}>
+            <button className="btn btn-secondary" onClick={exportGSTR3B} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}><Download size={13} /> 3B CSV</button>
             {!periodFiling.gstr3b && (
-              <button className="btn btn-secondary" onClick={() => markFiled('gstr3b')} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', marginLeft: 'auto', color: '#059669', borderColor: '#bbf7d0' }}>
-                <CheckCircle size={14} /> Mark GSTR-3B as Filed
+              <button className="btn btn-secondary" onClick={() => markFiled('gstr3b')} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', marginLeft: 'auto', color: '#059669', borderColor: '#bbf7d0' }}>
+                <CheckCircle size={13} /> Mark Filed
               </button>
             )}
           </div>
@@ -1182,7 +1144,7 @@ export default function GSTReturns() {
 
           {/* Table 4 — ITC */}
           <div className="glass-panel mb-4">
-            <div className="table-header"><h3>Table 4 — Eligible ITC (from Expenses)</h3></div>
+            <div className="table-header"><h3>Table 4 — Eligible ITC (from Expenses & Purchases)</h3></div>
             <div className="table-scroll">
               <table className="data-table" style={{ minWidth: '500px' }}>
                 <thead><tr><th>Details</th><th style={{ textAlign: 'right' }}>IGST</th><th style={{ textAlign: 'right' }}>CGST</th><th style={{ textAlign: 'right' }}>SGST</th></tr></thead>
@@ -1193,7 +1155,7 @@ export default function GSTReturns() {
               </table>
             </div>
             <p className="field-hint" style={{ padding: '0.75rem 1.25rem' }}>
-              ITC calculated from Expense Tracker entries with GST. Verify against GSTR-2B on the GST portal for actual eligible ITC.
+              ITC calculated from Expense Tracker and Purchase Bills entries with GST. Verify against GSTR-2B on the GST portal for actual eligible ITC.
             </p>
           </div>
 
@@ -1216,14 +1178,14 @@ export default function GSTReturns() {
             </div>
           </div>
 
-          {/* Net Payable Highlight */}
-          <div className="glass-panel p-6" style={{ textAlign: 'center', background: 'linear-gradient(135deg, #eff6ff, #f0fdf4)' }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Total GST Payable This Period</p>
-            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary)', margin: 0 }}>
-              {formatCurrency(netTax.igst + netTax.cgst + netTax.sgst)}
+          {/* Net Payable */}
+          <div className="glass-panel" style={{ padding: '1rem 1.25rem', textAlign: 'center' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 0.25rem' }}>Net GST Payable</p>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)', margin: 0 }}>
+              {formatCurrency(netPayable)}
             </h2>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-              {netTax.igst + netTax.cgst + netTax.sgst === 0 ? 'No tax payable — ITC covers your liability' : 'Pay via Electronic Cash Ledger on the GST portal'}
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+              {netPayable === 0 ? 'ITC covers your liability' : 'Pay via Electronic Cash Ledger'}
             </p>
           </div>
         </>
@@ -1233,53 +1195,11 @@ export default function GSTReturns() {
       {activeTab === 'guide' && (
         <>
           {/* Quick Start */}
-          <div className="glass-panel p-4 mb-4" style={{ borderLeft: '4px solid var(--primary)' }}>
-            <h4 style={{ marginBottom: '0.5rem', fontSize: '0.95rem' }}>Self-File Your GST Returns — Complete Guide</h4>
-            <ol style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: '1.25rem' }}>
-              <li>Select your filing period (month/quarter) above and review the <strong>GSTR-1</strong> and <strong>GSTR-3B</strong> tabs</li>
-              <li>Fix any validation warnings shown above</li>
-              <li>Export <strong>GSTR-1 JSON</strong> and upload to GST portal, OR enter data manually following the steps below</li>
-              <li>File <strong>GSTR-1 FIRST</strong>, then <strong>GSTR-3B</strong> — this order is mandatory</li>
-              <li>If you had NO sales/expenses this month, follow the <strong>NIL Return</strong> steps below</li>
-              <li>Mark each return as filed to track your compliance</li>
-            </ol>
-          </div>
-
-          {/* Prerequisites */}
-          <div className="glass-panel p-4 mb-4" style={{ background: '#f8fafc' }}>
-            <h4 style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>Before You Start — Checklist</h4>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 2rem' }}>
-                <div>☐ GST portal login credentials ready (GSTIN + password)</div>
-                <div>☐ Mobile phone for OTP verification (EVC)</div>
-                <div>☐ All invoices for the period entered in this software</div>
-                <div>☐ Expense invoices entered for ITC claims</div>
-                <div>☐ DSC (Digital Signature) if you're a Company/LLP</div>
-                <div>☐ GSTR-2B reviewed on portal for ITC matching</div>
-                <div>☐ Previous period returns filed (required to file current)</div>
-                <div>☐ Net banking/UPI ready if tax payment is required</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Due Dates Reference */}
-          <div className="glass-panel p-4 mb-4">
-            <h4 style={{ marginBottom: '0.75rem', fontSize: '0.9rem' }}>GST Return Due Dates (As per CGST Act 2017)</h4>
-            <div className="table-scroll">
-              <table className="data-table" style={{ minWidth: '500px', fontSize: '0.82rem' }}>
-                <thead><tr><th>Return</th><th>Frequency</th><th>Due Date</th><th>Late Fee</th></tr></thead>
-                <tbody>
-                  <tr><td className="font-medium">GSTR-1</td><td>Monthly</td><td>11th of next month</td><td>₹50/day (max ₹10,000)</td></tr>
-                  <tr><td className="font-medium">GSTR-1 (QRMP)</td><td>Quarterly</td><td>13th of month after quarter</td><td>₹50/day (max ₹10,000)</td></tr>
-                  <tr><td className="font-medium">IFF (QRMP only)</td><td>Monthly (optional)</td><td>13th of next month</td><td>No late fee (optional)</td></tr>
-                  <tr><td className="font-medium">GSTR-3B</td><td>Monthly</td><td>20th of next month</td><td>₹50/day (max ₹10,000) + 18% interest</td></tr>
-                  <tr><td className="font-medium">GSTR-3B (QRMP)</td><td>Quarterly</td><td>22nd/24th of month after quarter</td><td>₹50/day (max ₹10,000) + 18% interest</td></tr>
-                  <tr><td className="font-medium">NIL GSTR-1</td><td>Monthly/Quarterly</td><td>Same as regular</td><td>₹20/day (max ₹500)</td></tr>
-                  <tr><td className="font-medium">NIL GSTR-3B</td><td>Monthly/Quarterly</td><td>Same as regular</td><td>₹20/day (max ₹500)</td></tr>
-                  <tr><td className="font-medium">GSTR-9 (Annual)</td><td>Yearly</td><td>31st December of next FY</td><td>₹200/day (max 0.5% of turnover)</td></tr>
-                </tbody>
-              </table>
-            </div>
+          <div className="glass-panel" style={{ padding: '0.75rem 1rem', marginBottom: '0.75rem', borderLeft: '3px solid var(--primary)' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              <strong>Steps:</strong> Review GSTR-1 & 3B tabs → Export JSON → Upload to gst.gov.in → File GSTR-1 first, then GSTR-3B.
+              <span style={{ color: 'var(--text-muted)' }}> | Due: R1 by 11th, 3B by 20th of next month | Late fee: ₹50/day</span>
+            </p>
           </div>
 
           {/* Tab selector within guide */}

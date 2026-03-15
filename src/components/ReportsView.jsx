@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Wallet, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, BarChart3, Clock, Search, X } from 'lucide-react';
 import { getAllBills, getAllExpenses } from '../store';
 import { formatCurrency } from '../utils';
 import { toast } from './Toast';
@@ -23,10 +23,12 @@ function getFYOptions() {
 export default function ReportsView() {
   const [bills, setBills] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [activeTab, setActiveTab] = useState('pl');
   const [filterMode, setFilterMode] = useState('fy');
   const [fyFilter, setFyFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
+  const [agingSearch, setAgingSearch] = useState('');
 
   const fyOptions = getFYOptions();
   const currentYear = new Date().getFullYear();
@@ -93,153 +95,301 @@ export default function ReportsView() {
   });
   const monthlyKeys = Object.keys(monthlyPL).sort();
 
+  // ========== Outstanding & Aging ==========
+  const today = new Date();
+  const unpaidBills = bills.filter(b => b.status !== 'paid');
+  const agingData = unpaidBills.map(b => {
+    const dueDate = b.data?.details?.dueDate || b.invoiceDate;
+    const due = new Date(dueDate);
+    const daysOverdue = Math.max(0, Math.floor((today - due) / 86400000));
+    const outstanding = (b.totalAmount || 0) - (b.paidAmount || 0);
+    let bucket = 'current';
+    if (daysOverdue > 90) bucket = '90plus';
+    else if (daysOverdue > 60) bucket = '61to90';
+    else if (daysOverdue > 30) bucket = '31to60';
+    return {
+      clientName: b.clientName || 'Unknown',
+      invoiceNumber: b.invoiceNumber,
+      invoiceDate: b.invoiceDate,
+      dueDate,
+      totalAmount: b.totalAmount || 0,
+      paidAmount: b.paidAmount || 0,
+      outstanding,
+      daysOverdue,
+      bucket,
+    };
+  }).filter(r => r.outstanding > 0);
+
+  const agingFiltered = agingSearch.trim()
+    ? agingData.filter(r => r.clientName.toLowerCase().includes(agingSearch.toLowerCase()))
+    : agingData;
+
+  const agingSummary = {
+    total: agingFiltered.reduce((s, r) => s + r.outstanding, 0),
+    current: agingFiltered.filter(r => r.bucket === 'current').reduce((s, r) => s + r.outstanding, 0),
+    '31to60': agingFiltered.filter(r => r.bucket === '31to60').reduce((s, r) => s + r.outstanding, 0),
+    '61to90': agingFiltered.filter(r => r.bucket === '61to90').reduce((s, r) => s + r.outstanding, 0),
+    '90plus': agingFiltered.filter(r => r.bucket === '90plus').reduce((s, r) => s + r.outstanding, 0),
+  };
+
+  const agingSorted = [...agingFiltered].sort((a, b) => b.daysOverdue - a.daysOverdue);
+
   return (
     <div className="dashboard-container">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Profit & Loss Report</h1>
-          <p className="page-subtitle">Revenue, expenses, and profitability analysis</p>
+          <h1 className="page-title">Reports</h1>
+          <p className="page-subtitle">Financial reports and receivables analysis</p>
         </div>
       </div>
 
-      {/* Period Selector */}
-      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label className="form-label">Filter By</label>
-            <select className="form-input" value={filterMode} onChange={e => setFilterMode(e.target.value)}>
-              <option value="fy">Fiscal Year</option>
-              <option value="month">Month / Year</option>
-            </select>
-          </div>
-          {filterMode === 'fy' ? (
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Fiscal Year</label>
-              <select className="form-input" value={fyFilter} onChange={e => setFyFilter(e.target.value)}>
-                {fyOptions.map(fy => <option key={fy.value} value={fy.value}>{fy.label}</option>)}
-              </select>
+      {/* Tab Selector */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        <button className={`btn ${activeTab === 'pl' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('pl')}>
+          <BarChart3 size={16} /> Profit & Loss
+        </button>
+        <button className={`btn ${activeTab === 'aging' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('aging')}>
+          <Clock size={16} /> Outstanding & Aging
+        </button>
+      </div>
+
+      {activeTab === 'pl' && (
+        <>
+          {/* Period Selector */}
+          <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Filter By</label>
+                <select className="form-input" value={filterMode} onChange={e => setFilterMode(e.target.value)}>
+                  <option value="fy">Fiscal Year</option>
+                  <option value="month">Month / Year</option>
+                </select>
+              </div>
+              {filterMode === 'fy' ? (
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Fiscal Year</label>
+                  <select className="form-input" value={fyFilter} onChange={e => setFyFilter(e.target.value)}>
+                    {fyOptions.map(fy => <option key={fy.value} value={fy.value}>{fy.label}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Month</label>
+                    <select className="form-input" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}>
+                      {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Year</label>
+                    <select className="form-input" value={yearFilter} onChange={e => setYearFilter(e.target.value)}>
+                      {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
-          ) : (
-            <>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Month</label>
-                <select className="form-input" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}>
-                  {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                </select>
+          </div>
+
+          {/* P&L Summary Cards */}
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.5rem' }}>
+            <div className="stat-card">
+              <div className="stat-icon stat-icon-green"><TrendingUp size={22} /></div>
+              <div><p className="stat-label">Revenue (ex. tax)</p><h2 className="stat-value stat-value-green">{formatCurrency(revenueExTax)}</h2></div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon stat-icon-purple"><TrendingDown size={22} /></div>
+              <div><p className="stat-label">Expenses (ex. GST)</p><h2 className="stat-value stat-value-purple">{formatCurrency(expenseExGST)}</h2></div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: netProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)', color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                <Wallet size={22} />
               </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Year</label>
-                <select className="form-input" value={yearFilter} onChange={e => setYearFilter(e.target.value)}>
-                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
+              <div>
+                <p className="stat-label">Net {netProfit >= 0 ? 'Profit' : 'Loss'}</p>
+                <h2 className="stat-value" style={{ color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatCurrency(Math.abs(netProfit))}</h2>
               </div>
-            </>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon stat-icon-blue"><BarChart3 size={22} /></div>
+              <div><p className="stat-label">Margin</p><h2 className="stat-value">{revenueExTax > 0 ? Math.round((netProfit / revenueExTax) * 100) : 0}%</h2></div>
+            </div>
+          </div>
+
+          {/* P&L Statement */}
+          <div className="glass-panel" style={{ marginBottom: '1.5rem' }}>
+            <div className="table-header"><h3>Profit & Loss Statement</h3></div>
+            <div style={{ padding: '1.5rem' }}>
+              <table style={{ width: '100%', maxWidth: '500px', margin: '0 auto', borderCollapse: 'collapse' }}>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Total Revenue</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalRevenue)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Less: GST Collected</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#dc2626' }}>-{formatCurrency(totalTaxCollected)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                    <td style={{ padding: '0.6rem 0', fontWeight: 700 }}>Net Revenue</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(revenueExTax)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Total Expenses</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalExpenseAmount)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Less: GST on Expenses (ITC)</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#059669' }}>-{formatCurrency(totalExpenseGST)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                    <td style={{ padding: '0.6rem 0', fontWeight: 700 }}>Net Expenses</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(expenseExGST)}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '1rem 0', fontWeight: 800, fontSize: '1.1rem' }}>
+                      Net {netProfit >= 0 ? 'Profit' : 'Loss'}
+                    </td>
+                    <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 800, fontSize: '1.25rem', color: netProfit >= 0 ? '#059669' : '#dc2626' }}>
+                      {formatCurrency(Math.abs(netProfit))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Monthly Breakdown */}
+          {monthlyKeys.length > 0 && (
+            <div className="glass-panel">
+              <div className="table-header"><h3>Monthly Breakdown</h3></div>
+              <div className="table-scroll">
+                <table className="data-table" style={{ minWidth: '600px' }}>
+                  <thead><tr>
+                    <th>Month</th>
+                    <th style={{ textAlign: 'right' }}>Revenue</th>
+                    <th style={{ textAlign: 'right' }}>Expenses</th>
+                    <th style={{ textAlign: 'right' }}>Profit/Loss</th>
+                  </tr></thead>
+                  <tbody>
+                    {monthlyKeys.map(key => {
+                      const m = monthlyPL[key];
+                      const rev = m.revenue - m.tax;
+                      const exp = m.expense - m.expGst;
+                      const pl = rev - exp;
+                      const [y, mo] = key.split('-');
+                      return (
+                        <tr key={key}>
+                          <td className="font-medium">{MONTHS[parseInt(mo) - 1]} {y}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCurrency(rev)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCurrency(exp)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: pl >= 0 ? '#059669' : '#dc2626' }}>
+                            {formatCurrency(Math.abs(pl))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* P&L Summary Cards */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.5rem' }}>
-        <div className="stat-card">
-          <div className="stat-icon stat-icon-green"><TrendingUp size={22} /></div>
-          <div><p className="stat-label">Revenue (ex. tax)</p><h2 className="stat-value stat-value-green">{formatCurrency(revenueExTax)}</h2></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon stat-icon-purple"><TrendingDown size={22} /></div>
-          <div><p className="stat-label">Expenses (ex. GST)</p><h2 className="stat-value stat-value-purple">{formatCurrency(expenseExGST)}</h2></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: netProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)', color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-            <Wallet size={22} />
+      {activeTab === 'aging' && (
+        <>
+          {/* Aging Summary Cards */}
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '1.5rem' }}>
+            <div className="stat-card">
+              <div className="stat-icon stat-icon-blue"><Wallet size={22} /></div>
+              <div><p className="stat-label">Total Outstanding</p><h2 className="stat-value">{formatCurrency(agingSummary.total)}</h2></div>
+            </div>
+            <div className="stat-card">
+              <div><p className="stat-label">Current (0-30d)</p><h2 className="stat-value stat-value-green">{formatCurrency(agingSummary.current)}</h2></div>
+            </div>
+            <div className="stat-card">
+              <div><p className="stat-label">31-60 days</p><h2 className="stat-value stat-value-amber">{formatCurrency(agingSummary['31to60'])}</h2></div>
+            </div>
+            <div className="stat-card">
+              <div><p className="stat-label">61-90 days</p><h2 className="stat-value stat-value-purple">{formatCurrency(agingSummary['61to90'])}</h2></div>
+            </div>
+            <div className="stat-card">
+              <div><p className="stat-label">90+ days</p><h2 className="stat-value" style={{ color: '#dc2626' }}>{formatCurrency(agingSummary['90plus'])}</h2></div>
+            </div>
           </div>
-          <div>
-            <p className="stat-label">Net {netProfit >= 0 ? 'Profit' : 'Loss'}</p>
-            <h2 className="stat-value" style={{ color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatCurrency(Math.abs(netProfit))}</h2>
+
+          {/* Search */}
+          <div className="glass-panel p-4 mb-6">
+            <div className="search-box" style={{ maxWidth: '350px' }}>
+              <Search size={16} className="search-icon" />
+              <input type="text" placeholder="Filter by client name..." value={agingSearch}
+                onChange={e => setAgingSearch(e.target.value)} className="search-input" />
+              {agingSearch && <button className="icon-btn" onClick={() => setAgingSearch('')}><X size={14} /></button>}
+            </div>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon stat-icon-blue"><BarChart3 size={22} /></div>
-          <div><p className="stat-label">Margin</p><h2 className="stat-value">{revenueExTax > 0 ? Math.round((netProfit / revenueExTax) * 100) : 0}%</h2></div>
-        </div>
-      </div>
 
-      {/* P&L Statement */}
-      <div className="glass-panel" style={{ marginBottom: '1.5rem' }}>
-        <div className="table-header"><h3>Profit & Loss Statement</h3></div>
-        <div style={{ padding: '1.5rem' }}>
-          <table style={{ width: '100%', maxWidth: '500px', margin: '0 auto', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Total Revenue</td>
-                <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalRevenue)}</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Less: GST Collected</td>
-                <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#dc2626' }}>-{formatCurrency(totalTaxCollected)}</td>
-              </tr>
-              <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                <td style={{ padding: '0.6rem 0', fontWeight: 700 }}>Net Revenue</td>
-                <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(revenueExTax)}</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Total Expenses</td>
-                <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalExpenseAmount)}</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Less: GST on Expenses (ITC)</td>
-                <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#059669' }}>-{formatCurrency(totalExpenseGST)}</td>
-              </tr>
-              <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                <td style={{ padding: '0.6rem 0', fontWeight: 700 }}>Net Expenses</td>
-                <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(expenseExGST)}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '1rem 0', fontWeight: 800, fontSize: '1.1rem' }}>
-                  Net {netProfit >= 0 ? 'Profit' : 'Loss'}
-                </td>
-                <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 800, fontSize: '1.25rem', color: netProfit >= 0 ? '#059669' : '#dc2626' }}>
-                  {formatCurrency(Math.abs(netProfit))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Monthly Breakdown */}
-      {monthlyKeys.length > 0 && (
-        <div className="glass-panel">
-          <div className="table-header"><h3>Monthly Breakdown</h3></div>
-          <div className="table-scroll">
-            <table className="data-table" style={{ minWidth: '600px' }}>
-              <thead><tr>
-                <th>Month</th>
-                <th style={{ textAlign: 'right' }}>Revenue</th>
-                <th style={{ textAlign: 'right' }}>Expenses</th>
-                <th style={{ textAlign: 'right' }}>Profit/Loss</th>
-              </tr></thead>
-              <tbody>
-                {monthlyKeys.map(key => {
-                  const m = monthlyPL[key];
-                  const rev = m.revenue - m.tax;
-                  const exp = m.expense - m.expGst;
-                  const pl = rev - exp;
-                  const [y, mo] = key.split('-');
-                  return (
-                    <tr key={key}>
-                      <td className="font-medium">{MONTHS[parseInt(mo) - 1]} {y}</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(rev)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(exp)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: pl >= 0 ? '#059669' : '#dc2626' }}>
-                        {formatCurrency(Math.abs(pl))}
-                      </td>
+          {/* Aging Table */}
+          <div className="glass-panel">
+            <div className="table-header"><h3>Outstanding Receivables</h3></div>
+            {agingSorted.length === 0 ? (
+              <div className="empty-state">
+                <Wallet size={48} />
+                <p>No outstanding receivables found.</p>
+              </div>
+            ) : (
+              <div className="table-scroll">
+                <table className="data-table" style={{ minWidth: '850px' }}>
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Invoice No</th>
+                      <th>Date</th>
+                      <th>Due Date</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                      <th style={{ textAlign: 'right' }}>Paid</th>
+                      <th style={{ textAlign: 'right' }}>Outstanding</th>
+                      <th style={{ textAlign: 'right' }}>Days Overdue</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {agingSorted.map((r, i) => (
+                      <tr key={i} style={r.daysOverdue > 90 ? { background: '#fef2f2' } : r.daysOverdue > 30 ? { background: '#fffbeb' } : {}}>
+                        <td className="font-medium">{r.clientName}</td>
+                        <td><span className="invoice-badge">{r.invoiceNumber}</span></td>
+                        <td className="text-muted">{r.invoiceDate ? new Date(r.invoiceDate).toLocaleDateString('en-IN') : '-'}</td>
+                        <td className="text-muted">{r.dueDate ? new Date(r.dueDate).toLocaleDateString('en-IN') : '-'}</td>
+                        <td style={{ textAlign: 'right' }}>{formatCurrency(r.totalAmount)}</td>
+                        <td style={{ textAlign: 'right' }} className="text-muted">{r.paidAmount > 0 ? formatCurrency(r.paidAmount) : '-'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>{formatCurrency(r.outstanding)}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span style={{
+                            padding: '0.15rem 0.5rem', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
+                            background: r.daysOverdue > 90 ? '#fef2f2' : r.daysOverdue > 60 ? '#f5f3ff' : r.daysOverdue > 30 ? '#fffbeb' : '#ecfdf5',
+                            color: r.daysOverdue > 90 ? '#dc2626' : r.daysOverdue > 60 ? '#8b5cf6' : r.daysOverdue > 30 ? '#d97706' : '#059669',
+                          }}>
+                            {r.daysOverdue === 0 ? 'Current' : `${r.daysOverdue}d`}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ fontWeight: 'bold', borderTop: '2px solid var(--border)' }}>
+                      <td colSpan={4}>Total</td>
+                      <td style={{ textAlign: 'right' }}>{formatCurrency(agingSorted.reduce((s, r) => s + r.totalAmount, 0))}</td>
+                      <td style={{ textAlign: 'right' }}>{formatCurrency(agingSorted.reduce((s, r) => s + r.paidAmount, 0))}</td>
+                      <td style={{ textAlign: 'right', color: '#dc2626' }}>{formatCurrency(agingSummary.total)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
     </div>
   );

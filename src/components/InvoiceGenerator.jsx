@@ -106,6 +106,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
   const [items, setItems] = useState(draft?.items || [
     { id: Date.now().toString(), name: '', hsn: '', quantity: 1, rate: 0, discount: 0, taxPercent: 18 }
   ]);
+  const [taxInclusive, setTaxInclusive] = useState(draft?.taxInclusive || false);
 
   const [totals, setTotals] = useState({ subtotal: 0, totalDiscount: 0, cgst: 0, sgst: 0, igst: 0, total: 0 });
   const [saving, setSaving] = useState(false);
@@ -172,9 +173,9 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
 
   // Auto-save draft to sessionStorage
   useEffect(() => {
-    const draftData = { invoiceType, client, details, items, customTerms, customNotes, internalNote, extraSections, selectedTermsId, invoiceOptions };
+    const draftData = { invoiceType, client, details, items, customTerms, customNotes, internalNote, extraSections, selectedTermsId, invoiceOptions, taxInclusive };
     sessionStorage.setItem('gst_invoiceDraft', JSON.stringify(draftData));
-  }, [invoiceType, client, details, items, customTerms, customNotes, internalNote, extraSections, selectedTermsId, invoiceOptions]);
+  }, [invoiceType, client, details, items, customTerms, customNotes, internalNote, extraSections, selectedTermsId, invoiceOptions, taxInclusive]);
 
   // Mark initialized after first render cycle so auto-save doesn't trigger on load
   useEffect(() => {
@@ -242,6 +243,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
       if (d.customNotes !== undefined) setCustomNotes(d.customNotes);
       if (d.internalNote !== undefined) setInternalNote(d.internalNote);
       if (d.extraSections) setExtraSections(d.extraSections);
+      if (d.taxInclusive !== undefined) setTaxInclusive(d.taxInclusive);
       if (d.invoiceOptions) {
         // User's persisted defaults as base, bill options overlay
         try {
@@ -302,10 +304,21 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
       const amount = item.quantity * item.rate;
       const discount = item.discount || 0;
       const afterDiscount = amount - discount;
-      subtotal += amount;
-      totalDiscount += discount;
-      if (showGST) {
-        taxTotal += (afterDiscount * (item.taxPercent || 0)) / 100;
+
+      if (taxInclusive && showGST) {
+        // Rate is tax-inclusive (MRP). Back-calculate taxable value.
+        const taxPercent = item.taxPercent || 0;
+        const taxableValue = afterDiscount / (1 + taxPercent / 100);
+        const taxAmount = afterDiscount - taxableValue;
+        subtotal += amount;
+        totalDiscount += discount;
+        taxTotal += taxAmount;
+      } else {
+        subtotal += amount;
+        totalDiscount += discount;
+        if (showGST) {
+          taxTotal += (afterDiscount * (item.taxPercent || 0)) / 100;
+        }
       }
     });
 
@@ -313,16 +326,32 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
     const clientState = client?.state?.trim().toLowerCase();
     const isInterstate = businessState && clientState && businessState !== clientState;
 
-    setTotals({
-      subtotal,
-      totalDiscount,
-      taxableAmount: subtotal - totalDiscount,
-      cgst: isInterstate ? 0 : taxTotal / 2,
-      sgst: isInterstate ? 0 : taxTotal / 2,
-      igst: isInterstate ? taxTotal : 0,
-      total: subtotal - totalDiscount + taxTotal
-    });
-  }, [items, client.state, profile?.state, showGST]);
+    if (taxInclusive && showGST) {
+      // Tax-inclusive: total is the subtotal minus discount (already includes tax)
+      const taxableAmount = (subtotal - totalDiscount) - taxTotal;
+      setTotals({
+        subtotal,
+        totalDiscount,
+        taxableAmount,
+        cgst: isInterstate ? 0 : taxTotal / 2,
+        sgst: isInterstate ? 0 : taxTotal / 2,
+        igst: isInterstate ? taxTotal : 0,
+        total: subtotal - totalDiscount,
+        taxInclusive: true,
+      });
+    } else {
+      setTotals({
+        subtotal,
+        totalDiscount,
+        taxableAmount: subtotal - totalDiscount,
+        cgst: isInterstate ? 0 : taxTotal / 2,
+        sgst: isInterstate ? 0 : taxTotal / 2,
+        igst: isInterstate ? taxTotal : 0,
+        total: subtotal - totalDiscount + taxTotal,
+        taxInclusive: false,
+      });
+    }
+  }, [items, client.state, profile?.state, showGST, taxInclusive]);
 
   const handleItemChange = (id, field, value) => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
@@ -439,7 +468,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
       status: editingBill?.status || 'unpaid',
       paidAmount: editingBill?.paidAmount || 0,
       payments: editingBill?.payments || [],
-      data: { profile, client, details, items, totals, invoiceType, customTerms, customNotes, internalNote, extraSections, invoiceOptions }
+      data: { profile, client, details, items, totals, invoiceType, customTerms, customNotes, internalNote, extraSections, invoiceOptions, taxInclusive }
     };
     await saveBill(bill);
 
@@ -850,7 +879,16 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
 
           {/* Line Items */}
           <div className="glass-panel p-6 mb-6">
-            <h3 className="section-title">Line Items</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 className="section-title" style={{ margin: 0 }}>Line Items</h3>
+              {showGST && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', userSelect: 'none' }}>
+                  <input type="checkbox" checked={taxInclusive} onChange={e => setTaxInclusive(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                  <span style={{ fontWeight: 500 }}>Prices include tax</span>
+                </label>
+              )}
+            </div>
             {items.map((item) => (
               <div key={item.id} className="line-item-row">
                 <div className="line-item-field" style={{ flex: 2.5, position: 'relative' }}>
