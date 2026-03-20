@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getProfile, saveProfile, exportAllData, importData, getTermsTemplates, saveTermsTemplate, deleteTermsTemplate, getAllProfiles, saveBusinessProfile, deleteBusinessProfile, getInvoiceNumberSettings, saveInvoiceNumberSettings } from '../store';
-import { INDIAN_STATES } from '../utils';
+import { COUNTRIES, getCountryConfig, getStatesForCountry } from '../utils';
 import { Save, Upload, Download, Plus, Trash2, Image, PenTool, Cloud, CloudOff, Building2, Hash, RefreshCw } from 'lucide-react';
 import { initGoogleDrive, isConnected, disconnect } from '../services/googleDrive';
 import { toast } from './Toast';
@@ -26,6 +26,7 @@ export default function SettingsView({ onSaved }) {
   const fileInputRef = useRef(null);
   const logoInputRef = useRef(null);
   const sigInputRef = useRef(null);
+  const companyFormRef = useRef(null);
 
   useEffect(() => {
     getProfile().then(setProfile);
@@ -170,13 +171,20 @@ export default function SettingsView({ onSaved }) {
 
   // Multi-business profiles
   const handleSaveAsProfile = async () => {
-    if (!profile.businessName.trim()) { toast('Save profile first (business name required)', 'warning'); return; }
-    await saveBusinessProfile({ ...profile, id: undefined });
-    toast('Business profile saved! You can switch between profiles anytime.', 'success');
+    if (!profile.businessName.trim()) { toast('Business name required', 'warning'); return; }
+    // Update existing profile with same name, or create new
+    const existing = businessProfiles.find(bp => bp.businessName.trim().toLowerCase() === profile.businessName.trim().toLowerCase());
+    await saveBusinessProfile({ ...profile, id: existing?.id || undefined });
+    toast(existing ? 'Profile updated!' : 'Profile saved!', 'success');
     loadBusinessProfiles();
   };
 
   const handleLoadProfile = async (bp) => {
+    // Auto-save current profile before switching (so it's not lost)
+    if (profile.businessName?.trim()) {
+      const existing = businessProfiles.find(p => p.businessName.trim().toLowerCase() === profile.businessName.trim().toLowerCase());
+      await saveBusinessProfile({ ...profile, id: existing?.id || undefined });
+    }
     const loaded = { ...bp };
     delete loaded.id;
     setProfile(loaded);
@@ -193,6 +201,15 @@ export default function SettingsView({ onSaved }) {
     }
   };
 
+  const handleAddNewProfile = () => {
+    setProfile({
+      businessName: '', address: '', city: '', state: '', pin: '', country: 'India',
+      gstin: '', pan: '', email: '', phone: '', bankName: '', accountNumber: '', ifsc: '',
+      logo: '', logoHeight: 48, signature: '', upiId: '', googleClientId: '', googleDriveFolder: 'GST Billing Invoices',
+    });
+    companyFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
 
   return (
     <div className="settings-container">
@@ -204,45 +221,64 @@ export default function SettingsView({ onSaved }) {
       </div>
 
       {/* ---- Business Profile ---- */}
-      <form onSubmit={handleSave} className="glass-panel p-6 mb-6">
+      <form onSubmit={handleSave} className="glass-panel p-6 mb-6" ref={companyFormRef}>
         <h3 className="section-title">Company Details</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="form-group full-width">
-            <label className="form-label">Business Name *</label>
-            <input required type="text" name="businessName" className="form-input" value={profile.businessName} onChange={handleChange} />
-          </div>
-          <div className="form-group full-width">
-            <label className="form-label">Address *</label>
-            <textarea required rows="3" name="address" className="form-input" value={profile.address} onChange={handleChange} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">City</label>
-            <input type="text" name="city" className="form-input" value={profile.city || ''} onChange={handleChange} placeholder="e.g. Mumbai" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">PIN Code</label>
-            <input type="text" name="pin" className="form-input" value={profile.pin || ''} onChange={handleChange} placeholder="e.g. 400001" maxLength={6} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">State *</label>
-            <select required name="state" className="form-input" value={profile.state} onChange={handleChange}>
-              <option value="">Select State</option>
-              {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">GSTIN</label>
-            <input type="text" name="gstin" className="form-input" value={profile.gstin} onChange={handleChange} placeholder="Optional" maxLength={15} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <input type="email" name="email" className="form-input" value={profile.email} onChange={handleChange} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Phone</label>
-            <input type="text" name="phone" className="form-input" value={profile.phone} onChange={handleChange} />
-          </div>
-        </div>
+        {(() => {
+          const cc = getCountryConfig(profile.country);
+          return (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="form-group full-width">
+                <label className="form-label">Business Name *</label>
+                <input required type="text" name="businessName" className="form-input" value={profile.businessName} onChange={handleChange} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Country</label>
+                <select name="country" className="form-input" value={profile.country || 'India'} onChange={handleChange}>
+                  {COUNTRIES.map(c => <option key={c.code} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group full-width">
+                <label className="form-label">Address</label>
+                <textarea rows="2" name="address" className="form-input" value={profile.address} onChange={handleChange} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">City</label>
+                <input type="text" name="city" className="form-input" value={profile.city || ''} onChange={handleChange} placeholder="e.g. Mumbai" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">{cc.postalLabel}</label>
+                <input type="text" name="pin" className="form-input" value={profile.pin || ''} onChange={handleChange} placeholder={cc.postalLabel} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">{cc.stateLabel}</label>
+                {(() => {
+                  const stateOpts = getStatesForCountry(profile.country || 'India');
+                  return stateOpts.length > 0 ? (
+                    <select name="state" className="form-input" value={profile.state} onChange={handleChange}>
+                      <option value="">Select {cc.stateLabel}</option>
+                      {stateOpts.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  ) : (
+                    <input type="text" name="state" className="form-input" value={profile.state || ''} onChange={handleChange} placeholder={cc.stateLabel} />
+                  );
+                })()}
+              </div>
+              <div className="form-group">
+                <label className="form-label">{cc.taxIdLabel}</label>
+                <input type="text" name="gstin" className="form-input" value={profile.gstin} onChange={handleChange}
+                  placeholder={cc.taxIdPlaceholder} maxLength={20} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input type="email" name="email" className="form-input" value={profile.email} onChange={handleChange} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Phone</label>
+                <input type="text" name="phone" className="form-input" value={profile.phone} onChange={handleChange} />
+              </div>
+            </div>
+          );
+        })()}
 
         <h3 className="section-title mt-8">Bank Details</h3>
         <div className="grid grid-cols-2 gap-4">
@@ -565,32 +601,40 @@ export default function SettingsView({ onSaved }) {
       <div className="glass-panel p-6 mb-6">
         <div className="flex justify-between items-center mb-4">
           <h3 className="section-title" style={{ margin: 0 }}>Business Profiles</h3>
-          <button type="button" className="btn btn-primary" onClick={handleSaveAsProfile}>
-            <Building2 size={16} /> Save Current as Profile
-          </button>
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-secondary" onClick={handleAddNewProfile}>
+              <Plus size={16} /> Add New Profile
+            </button>
+            <button type="button" className="btn btn-primary" onClick={handleSaveAsProfile}>
+              <Building2 size={16} /> Save as Profile
+            </button>
+          </div>
         </div>
         <p className="page-subtitle mb-4">
-          Save multiple business profiles and switch between them. Useful if you manage invoicing for more than one business.
+          Save multiple business profiles and switch between them instantly. Switching auto-saves your current profile first.
         </p>
         {businessProfiles.length === 0 ? (
           <p className="text-muted" style={{ fontSize: '0.85rem' }}>
-            No saved profiles yet. Fill in your business details above and click "Save Current as Profile".
+            No saved profiles yet. Fill in your business details above and click "Save as Profile".
           </p>
         ) : (
           <div className="template-list">
-            {businessProfiles.map(bp => (
-              <div key={bp.id} className="template-card">
+            {businessProfiles.map(bp => {
+              const isActive = bp.businessName?.trim().toLowerCase() === profile.businessName?.trim().toLowerCase();
+              return (
+              <div key={bp.id} className="template-card" style={isActive ? { borderColor: 'var(--primary)', borderWidth: '2px' } : {}}>
                 <div className="template-card-header">
                   <div>
                     <strong>{bp.businessName}</strong>
+                    {isActive && <span style={{ fontSize: '0.68rem', background: 'var(--primary)', color: '#fff', borderRadius: '4px', padding: '0.1rem 0.4rem', marginLeft: '0.5rem' }}>Active</span>}
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
                       {bp.state}{bp.gstin ? ` | ${bp.gstin}` : ''}
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
-                      onClick={() => handleLoadProfile(bp)}>
-                      Switch
+                      onClick={() => handleLoadProfile(bp)} disabled={isActive}>
+                      {isActive ? 'Current' : 'Switch'}
                     </button>
                     <button className="icon-btn icon-btn-red" onClick={() => handleDeleteProfile(bp.id)} title="Delete">
                       <Trash2 size={14} />
@@ -599,7 +643,8 @@ export default function SettingsView({ onSaved }) {
                 </div>
                 {bp.address && <p className="template-card-preview">{bp.address}</p>}
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

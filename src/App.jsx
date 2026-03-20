@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Home, FileText, Settings, Plus, Users, Package, BarChart3, Wallet, RefreshCw, Receipt, BookOpen, Moon, Sun, Download, X, ShoppingCart } from 'lucide-react';
+import { Home, FileText, Settings, Plus, Users, Package, BarChart3, Wallet, RefreshCw, Receipt, BookOpen, Moon, Sun, Download, X, ShoppingCart, ChevronDown, Building2, Pencil } from 'lucide-react';
+import { getAllProfiles, saveProfile } from './store';
 import Dashboard from './components/Dashboard';
 import InvoiceGenerator from './components/InvoiceGenerator';
 import SettingsView from './components/SettingsView';
@@ -36,6 +37,9 @@ function App() {
 
   const [serverStatus, setServerStatus] = useState('checking'); // 'checking' | 'online' | 'offline'
   const profileLoaded = useRef(false);
+  const [allProfiles, setAllProfiles] = useState([]);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileMenuRef = useRef(null);
 
   // Check if server is running — continuously monitors
   useEffect(() => {
@@ -108,6 +112,33 @@ function App() {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
     localStorage.setItem('freegstbill_theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
+
+  // Load all saved business profiles
+  useEffect(() => {
+    if (serverStatus === 'online') {
+      getAllProfiles().then(setAllProfiles).catch(() => {});
+    }
+  }, [serverStatus]);
+
+  // Close profile menu on outside click
+  useEffect(() => {
+    if (!showProfileMenu) return;
+    const handler = (e) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showProfileMenu]);
+
+  const handleSwitchProfile = async (bp) => {
+    setShowProfileMenu(false);
+    const loaded = { ...bp };
+    delete loaded.id;
+    await saveProfile(loaded);
+    setProfile(loaded);
+  };
 
   const handleNewInvoice = () => {
     sessionStorage.removeItem('gst_invoiceDraft');
@@ -219,6 +250,47 @@ function App() {
             <h2 className="sidebar-title">GST Billing</h2>
             <p className="sidebar-subtitle">by DiceCodes</p>
           </div>
+        </div>
+
+        <div className="profile-switcher" ref={profileMenuRef} style={{ position: 'relative' }}>
+          <div className="profile-switcher-row">
+            <button
+              className="profile-switcher-btn"
+              onClick={() => allProfiles.length > 1 && setShowProfileMenu(v => !v)}
+              title={allProfiles.length > 1 ? 'Switch business profile' : profile?.businessName || 'My Business'}
+              style={{ cursor: allProfiles.length > 1 ? 'pointer' : 'default' }}
+            >
+              <Building2 size={14} />
+              <span className="profile-switcher-name">{profile?.businessName || 'My Business'}</span>
+              {allProfiles.length > 1 && <ChevronDown size={13} style={{ marginLeft: 'auto', opacity: 0.6 }} />}
+            </button>
+            <button
+              className="profile-switcher-edit"
+              onClick={() => { setShowProfileMenu(false); setCurrentView('settings'); }}
+              title="Edit business profile"
+            >
+              <Pencil size={13} />
+            </button>
+          </div>
+          {showProfileMenu && (
+            <div className="profile-switcher-menu">
+              {allProfiles.map(bp => (
+                <button
+                  key={bp.id || bp.businessName}
+                  className={`profile-switcher-item${bp.businessName?.trim().toLowerCase() === profile?.businessName?.trim().toLowerCase() ? ' active' : ''}`}
+                  onClick={() => handleSwitchProfile(bp)}
+                >
+                  {bp.businessName}
+                </button>
+              ))}
+              <button
+                className="profile-switcher-item profile-switcher-manage"
+                onClick={() => { setShowProfileMenu(false); setCurrentView('settings'); }}
+              >
+                Manage profiles...
+              </button>
+            </div>
+          )}
         </div>
 
         <nav className="sidebar-nav">

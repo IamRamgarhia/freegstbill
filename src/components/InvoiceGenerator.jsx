@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Plus, Trash2, Download, UserPlus, Pencil, Settings, ChevronUp, ChevronDown, MessageCircle, Check, Loader, Truck } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { saveBill, getNextInvoiceNumber, getTermsTemplates, getAllClients, saveClient, getProfile, getAllProducts, saveProduct, getInvoiceDisplayOptions, saveInvoiceDisplayOptions } from '../store';
-import { INDIAN_STATES, INVOICE_TYPES, generateEWayBillJSON, formatCurrency } from '../utils';
+import { saveBill, getNextInvoiceNumber, getTermsTemplates, getAllClients, saveClient, getProfile, getAllProducts, saveProduct, getInvoiceDisplayOptions, saveInvoiceDisplayOptions, getAllProfiles } from '../store';
+import { COUNTRIES, INVOICE_TYPES, generateEWayBillJSON, formatCurrency, getCountryConfig, getStatesForCountry } from '../utils';
 import { ensureToken, findOrCreateFolder, uploadPDF } from '../services/googleDrive';
 import DOMPurify from 'dompurify';
 import InvoicePreview from './InvoicePreview';
@@ -91,10 +91,13 @@ const PDF_STYLES = [
   { id: 'minimal', label: 'Minimal', desc: 'Simple, borderless layout' },
 ];
 
-export default function InvoiceGenerator({ onBack, profile, editingBill }) {
+export default function InvoiceGenerator({ onBack, profile: profileProp, editingBill }) {
   const draft = loadDraft();
+  const [allProfiles, setAllProfiles] = useState([]);
+  const [activeProfile, setActiveProfile] = useState(profileProp);
+  const profile = activeProfile || profileProp;
   const [invoiceType, setInvoiceType] = useState(draft?.invoiceType || 'tax-invoice');
-  const [client, setClient] = useState(draft?.client || { name: '', address: '', city: '', pin: '', state: '', gstin: '' });
+  const [client, setClient] = useState(draft?.client || { name: '', address: '', city: '', pin: '', state: '', gstin: '', country: '' });
   const [details, setDetails] = useState(draft?.details || {
     invoiceNumber: '',
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -210,6 +213,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
 
   // Load terms templates and saved clients
   useEffect(() => {
+    getAllProfiles().then(p => { setAllProfiles(p); if (!activeProfile && p.length > 0) setActiveProfile(profileProp); }).catch(() => {});
     getTermsTemplates().then(templates => {
       setTermsTemplates(templates);
       if (templates.length > 0 && !selectedTermsId && !draftInitialized.current) {
@@ -463,6 +467,7 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
       invoiceNumber: details.invoiceNumber,
       invoiceDate: details.invoiceDate,
       invoiceType,
+      currency: invoiceOptions.currency || 'INR',
       totalAmount: totals.total,
       totalTaxAmount: totals.cgst + totals.sgst + totals.igst,
       status: editingBill?.status || 'unpaid',
@@ -654,6 +659,32 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
       <div className="split-view">
         <div className="editor-pane">
 
+          {/* Business Profile Selector — shown only if multiple profiles saved */}
+          {allProfiles.length > 1 && (
+            <div className="glass-panel p-6 mb-6">
+              <h3 className="section-title" style={{ marginBottom: '0.75rem' }}>Billing From (Business Profile)</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                {allProfiles.map(bp => {
+                  const isSelected = (activeProfile?.businessName || profileProp?.businessName) === bp.businessName;
+                  return (
+                    <button key={bp.id} type="button"
+                      onClick={() => setActiveProfile(bp)}
+                      style={{
+                        padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.85rem', cursor: 'pointer',
+                        border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
+                        background: isSelected ? 'rgba(59,130,246,0.08)' : 'var(--surface)',
+                        color: isSelected ? 'var(--primary)' : 'var(--text)',
+                        fontWeight: isSelected ? 700 : 400,
+                      }}>
+                      {bp.businessName}
+                      {bp.gstin && <span style={{ fontSize: '0.72rem', marginLeft: 6, opacity: 0.7 }}>{bp.gstin}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Invoice Type */}
           <div className="glass-panel p-6 mb-6">
             <div className="flex justify-between items-center">
@@ -810,31 +841,50 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
                   onChange={(e) => setClient({ ...client, address: e.target.value })} placeholder="Street address, locality" />
               </div>
               <div className="form-group">
+                <label className="form-label">Country</label>
+                <select className="form-input" value={client.country || profile?.country || 'India'}
+                  onChange={(e) => setClient({ ...client, country: e.target.value, state: '' })}>
+                  {COUNTRIES.map(c => <option key={c.code} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
                 <label className="form-label">City</label>
                 <input type="text" className="form-input" value={client.city}
                   onChange={(e) => setClient({ ...client, city: e.target.value })} placeholder="e.g. Mumbai" />
               </div>
               <div className="form-group">
-                <label className="form-label">PIN Code</label>
+                {(() => { const cc = getCountryConfig(client.country || profile?.country); return <label className="form-label">{cc.postalLabel}</label>; })()}
                 <input type="text" className="form-input" value={client.pin}
-                  onChange={(e) => setClient({ ...client, pin: e.target.value.replace(/\D/g, '') })} placeholder="e.g. 400001" maxLength={6} />
+                  onChange={(e) => setClient({ ...client, pin: e.target.value })} placeholder="Postal / PIN code" />
               </div>
-              {invoiceOptions.showState && (
-                <div className="form-group">
-                  <label className="form-label">State</label>
-                  <select className="form-input" value={client.state} onChange={(e) => setClient({ ...client, state: e.target.value })}>
-                    <option value="">Select State</option>
-                    {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              )}
-              {invoiceOptions.showGSTIN && (
-                <div className="form-group">
-                  <label className="form-label">GSTIN</label>
-                  <input type="text" className="form-input" value={client.gstin}
-                    onChange={(e) => setClient({ ...client, gstin: e.target.value.toUpperCase() })} placeholder="Optional" maxLength={15} />
-                </div>
-              )}
+              {invoiceOptions.showState && (() => {
+                const cc = getCountryConfig(client.country || profile?.country);
+                const stateOpts = getStatesForCountry(client.country || profile?.country);
+                return (
+                  <div className="form-group">
+                    <label className="form-label">{cc.stateLabel}</label>
+                    {stateOpts.length > 0 ? (
+                      <select className="form-input" value={client.state} onChange={(e) => setClient({ ...client, state: e.target.value })}>
+                        <option value="">Select {cc.stateLabel}</option>
+                        {stateOpts.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" className="form-input" value={client.state}
+                        onChange={(e) => setClient({ ...client, state: e.target.value })} placeholder={cc.stateLabel} />
+                    )}
+                  </div>
+                );
+              })()}
+              {invoiceOptions.showGSTIN && (() => {
+                const cc = getCountryConfig(client.country || profile?.country);
+                return (
+                  <div className="form-group">
+                    <label className="form-label">{cc.taxIdLabel}</label>
+                    <input type="text" className="form-input" value={client.gstin}
+                      onChange={(e) => setClient({ ...client, gstin: e.target.value.toUpperCase() })} placeholder="Optional" maxLength={20} />
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -857,16 +907,24 @@ export default function InvoiceGenerator({ onBack, profile, editingBill }) {
                 <input type="date" className="form-input" value={details.dueDate}
                   onChange={(e) => setDetails({ ...details, dueDate: e.target.value })} />
               </div>
-              {invoiceOptions.showPlaceOfSupply && (
-                <div className="form-group">
-                  <label className="form-label">Place of Supply</label>
-                  <select className="form-input" value={details.placeOfSupply}
-                    onChange={(e) => setDetails({ ...details, placeOfSupply: e.target.value })}>
-                    <option value="">Defaults to Client State</option>
-                    {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              )}
+              {invoiceOptions.showPlaceOfSupply && (() => {
+                const posOpts = getStatesForCountry(profile?.country);
+                return (
+                  <div className="form-group">
+                    <label className="form-label">Place of Supply</label>
+                    {posOpts.length > 0 ? (
+                      <select className="form-input" value={details.placeOfSupply}
+                        onChange={(e) => setDetails({ ...details, placeOfSupply: e.target.value })}>
+                        <option value="">Defaults to Client State</option>
+                        {posOpts.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" className="form-input" value={details.placeOfSupply}
+                        onChange={(e) => setDetails({ ...details, placeOfSupply: e.target.value })} placeholder="State / Region" />
+                    )}
+                  </div>
+                );
+              })()}
               {invoiceType === 'credit-note' && (
                 <div className="form-group full-width">
                   <label className="form-label">Original Invoice Reference</label>

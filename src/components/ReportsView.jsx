@@ -20,6 +20,8 @@ function getFYOptions() {
   return options;
 }
 
+const getBillCurrency = (b) => b.currency || b.data?.invoiceOptions?.currency || 'INR';
+
 export default function ReportsView() {
   const [bills, setBills] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -29,6 +31,7 @@ export default function ReportsView() {
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
   const [agingSearch, setAgingSearch] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState('INR');
 
   const fyOptions = getFYOptions();
   const currentYear = new Date().getFullYear();
@@ -68,18 +71,30 @@ export default function ReportsView() {
   const allFilteredBills = bills.filter(bill => bill.data && filterByPeriod(bill.invoiceDate));
   const filteredExpenses = expenses.filter(exp => filterByPeriod(exp.date));
 
+  // All distinct currencies in the filtered period
+  const allCurrencies = [...new Set(allFilteredBills.map(getBillCurrency))].sort();
+  // Set currency filter to first available if current selection not in list
+  useEffect(() => {
+    if (allCurrencies.length > 0 && !allCurrencies.includes(currencyFilter)) {
+      setCurrencyFilter(allCurrencies[0]);
+    }
+  }, [allCurrencies.join(',')]);
+
+  // Bills for P&L — only selected currency
+  const plBills = allFilteredBills.filter(b => getBillCurrency(b) === currencyFilter);
+
   // P&L
-  const totalRevenue = allFilteredBills.reduce((s, b) => s + (b.totalAmount || 0), 0);
-  const totalTaxCollected = allFilteredBills.reduce((s, b) => s + (b.totalTaxAmount || 0), 0);
+  const totalRevenue = plBills.reduce((s, b) => s + (b.totalAmount || 0), 0);
+  const totalTaxCollected = plBills.reduce((s, b) => s + (b.totalTaxAmount || 0), 0);
   const revenueExTax = totalRevenue - totalTaxCollected;
   const totalExpenseAmount = filteredExpenses.reduce((s, e) => s + (e.amount || 0), 0);
   const totalExpenseGST = filteredExpenses.reduce((s, e) => s + (e.gstAmount || 0), 0);
   const expenseExGST = totalExpenseAmount - totalExpenseGST;
   const netProfit = revenueExTax - expenseExGST;
 
-  // Monthly breakdown
+  // Monthly breakdown — per selected currency
   const monthlyPL = {};
-  allFilteredBills.forEach(b => {
+  plBills.forEach(b => {
     if (!b.invoiceDate) return;
     const key = b.invoiceDate.substring(0, 7);
     if (!monthlyPL[key]) monthlyPL[key] = { revenue: 0, tax: 0, expense: 0, expGst: 0 };
@@ -117,6 +132,7 @@ export default function ReportsView() {
       outstanding,
       daysOverdue,
       bucket,
+      currency: getBillCurrency(b),
     };
   }).filter(r => r.outstanding > 0);
 
@@ -124,13 +140,15 @@ export default function ReportsView() {
     ? agingData.filter(r => r.clientName.toLowerCase().includes(agingSearch.toLowerCase()))
     : agingData;
 
-  const agingSummary = {
-    total: agingFiltered.reduce((s, r) => s + r.outstanding, 0),
-    current: agingFiltered.filter(r => r.bucket === 'current').reduce((s, r) => s + r.outstanding, 0),
-    '31to60': agingFiltered.filter(r => r.bucket === '31to60').reduce((s, r) => s + r.outstanding, 0),
-    '61to90': agingFiltered.filter(r => r.bucket === '61to90').reduce((s, r) => s + r.outstanding, 0),
-    '90plus': agingFiltered.filter(r => r.bucket === '90plus').reduce((s, r) => s + r.outstanding, 0),
-  };
+  // Aging summary — group by currency
+  const agingByCurrency = {};
+  agingFiltered.forEach(r => {
+    if (!agingByCurrency[r.currency]) agingByCurrency[r.currency] = { total: 0, current: 0, '31to60': 0, '61to90': 0, '90plus': 0 };
+    agingByCurrency[r.currency].total += r.outstanding;
+    agingByCurrency[r.currency][r.bucket] += r.outstanding;
+  });
+  // Keep INR-first ordering for display
+  const agingCurrencies = Object.keys(agingByCurrency).sort((a, b) => a === 'INR' ? -1 : b === 'INR' ? 1 : a.localeCompare(b));
 
   const agingSorted = [...agingFiltered].sort((a, b) => b.daysOverdue - a.daysOverdue);
 
@@ -157,7 +175,7 @@ export default function ReportsView() {
 
       {activeTab === 'pl' && (
         <>
-          {/* Period Selector */}
+          {/* Period + Currency Selector */}
           <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div className="form-group" style={{ margin: 0 }}>
@@ -190,6 +208,14 @@ export default function ReportsView() {
                   </div>
                 </>
               )}
+              {allCurrencies.length > 1 && (
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Currency</label>
+                  <select className="form-input" value={currencyFilter} onChange={e => setCurrencyFilter(e.target.value)}>
+                    {allCurrencies.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -197,11 +223,11 @@ export default function ReportsView() {
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.5rem' }}>
             <div className="stat-card">
               <div className="stat-icon stat-icon-green"><TrendingUp size={22} /></div>
-              <div><p className="stat-label">Revenue (ex. tax)</p><h2 className="stat-value stat-value-green">{formatCurrency(revenueExTax)}</h2></div>
+              <div><p className="stat-label">Revenue (ex. tax)</p><h2 className="stat-value stat-value-green">{formatCurrency(revenueExTax, currencyFilter)}</h2></div>
             </div>
             <div className="stat-card">
               <div className="stat-icon stat-icon-purple"><TrendingDown size={22} /></div>
-              <div><p className="stat-label">Expenses (ex. GST)</p><h2 className="stat-value stat-value-purple">{formatCurrency(expenseExGST)}</h2></div>
+              <div><p className="stat-label">Expenses (ex. GST)</p><h2 className="stat-value stat-value-purple">{formatCurrency(expenseExGST, currencyFilter)}</h2></div>
             </div>
             <div className="stat-card">
               <div className="stat-icon" style={{ background: netProfit >= 0 ? 'var(--success-light)' : 'var(--danger-light)', color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
@@ -209,7 +235,7 @@ export default function ReportsView() {
               </div>
               <div>
                 <p className="stat-label">Net {netProfit >= 0 ? 'Profit' : 'Loss'}</p>
-                <h2 className="stat-value" style={{ color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatCurrency(Math.abs(netProfit))}</h2>
+                <h2 className="stat-value" style={{ color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatCurrency(Math.abs(netProfit), currencyFilter)}</h2>
               </div>
             </div>
             <div className="stat-card">
@@ -220,40 +246,47 @@ export default function ReportsView() {
 
           {/* P&L Statement */}
           <div className="glass-panel" style={{ marginBottom: '1.5rem' }}>
-            <div className="table-header"><h3>Profit & Loss Statement</h3></div>
+            <div className="table-header">
+              <h3>Profit & Loss Statement</h3>
+              {allCurrencies.length > 1 && (
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                  Showing {currencyFilter} invoices only
+                </span>
+              )}
+            </div>
             <div style={{ padding: '1.5rem' }}>
               <table style={{ width: '100%', maxWidth: '500px', margin: '0 auto', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Total Revenue</td>
-                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalRevenue)}</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalRevenue, currencyFilter)}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Less: GST Collected</td>
-                    <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#dc2626' }}>-{formatCurrency(totalTaxCollected)}</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#dc2626' }}>-{formatCurrency(totalTaxCollected, currencyFilter)}</td>
                   </tr>
                   <tr style={{ borderBottom: '2px solid var(--border)' }}>
                     <td style={{ padding: '0.6rem 0', fontWeight: 700 }}>Net Revenue</td>
-                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(revenueExTax)}</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(revenueExTax, currencyFilter)}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Total Expenses</td>
-                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalExpenseAmount)}</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(totalExpenseAmount, currencyFilter)}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '0.6rem 0', fontWeight: 500, color: 'var(--text-secondary)' }}>Less: GST on Expenses (ITC)</td>
-                    <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#059669' }}>-{formatCurrency(totalExpenseGST)}</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', color: '#059669' }}>-{formatCurrency(totalExpenseGST, currencyFilter)}</td>
                   </tr>
                   <tr style={{ borderBottom: '2px solid var(--border)' }}>
                     <td style={{ padding: '0.6rem 0', fontWeight: 700 }}>Net Expenses</td>
-                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(expenseExGST)}</td>
+                    <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(expenseExGST, currencyFilter)}</td>
                   </tr>
                   <tr>
                     <td style={{ padding: '1rem 0', fontWeight: 800, fontSize: '1.1rem' }}>
                       Net {netProfit >= 0 ? 'Profit' : 'Loss'}
                     </td>
                     <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 800, fontSize: '1.25rem', color: netProfit >= 0 ? '#059669' : '#dc2626' }}>
-                      {formatCurrency(Math.abs(netProfit))}
+                      {formatCurrency(Math.abs(netProfit), currencyFilter)}
                     </td>
                   </tr>
                 </tbody>
@@ -283,10 +316,10 @@ export default function ReportsView() {
                       return (
                         <tr key={key}>
                           <td className="font-medium">{MONTHS[parseInt(mo) - 1]} {y}</td>
-                          <td style={{ textAlign: 'right' }}>{formatCurrency(rev)}</td>
-                          <td style={{ textAlign: 'right' }}>{formatCurrency(exp)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCurrency(rev, currencyFilter)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCurrency(exp, currencyFilter)}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700, color: pl >= 0 ? '#059669' : '#dc2626' }}>
-                            {formatCurrency(Math.abs(pl))}
+                            {formatCurrency(Math.abs(pl), currencyFilter)}
                           </td>
                         </tr>
                       );
@@ -301,28 +334,44 @@ export default function ReportsView() {
 
       {activeTab === 'aging' && (
         <>
-          {/* Aging Summary Cards */}
-          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '1.5rem' }}>
-            <div className="stat-card">
-              <div className="stat-icon stat-icon-blue"><Wallet size={22} /></div>
-              <div><p className="stat-label">Total Outstanding</p><h2 className="stat-value">{formatCurrency(agingSummary.total)}</h2></div>
+          {/* Aging Summary Cards — per currency */}
+          {agingCurrencies.map(cur => (
+            <div key={cur} style={{ marginBottom: '1rem' }}>
+              {agingCurrencies.length > 1 && (
+                <p style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>{cur}</p>
+              )}
+              <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                <div className="stat-card">
+                  <div className="stat-icon stat-icon-blue"><Wallet size={22} /></div>
+                  <div><p className="stat-label">Total Outstanding</p><h2 className="stat-value">{formatCurrency(agingByCurrency[cur].total, cur)}</h2></div>
+                </div>
+                <div className="stat-card">
+                  <div><p className="stat-label">Current (0-30d)</p><h2 className="stat-value stat-value-green">{formatCurrency(agingByCurrency[cur].current, cur)}</h2></div>
+                </div>
+                <div className="stat-card">
+                  <div><p className="stat-label">31-60 days</p><h2 className="stat-value stat-value-amber">{formatCurrency(agingByCurrency[cur]['31to60'], cur)}</h2></div>
+                </div>
+                <div className="stat-card">
+                  <div><p className="stat-label">61-90 days</p><h2 className="stat-value stat-value-purple">{formatCurrency(agingByCurrency[cur]['61to90'], cur)}</h2></div>
+                </div>
+                <div className="stat-card">
+                  <div><p className="stat-label">90+ days</p><h2 className="stat-value" style={{ color: '#dc2626' }}>{formatCurrency(agingByCurrency[cur]['90plus'], cur)}</h2></div>
+                </div>
+              </div>
             </div>
-            <div className="stat-card">
-              <div><p className="stat-label">Current (0-30d)</p><h2 className="stat-value stat-value-green">{formatCurrency(agingSummary.current)}</h2></div>
+          ))}
+          {agingCurrencies.length === 0 && (
+            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '1.5rem' }}>
+              {['Total Outstanding', 'Current (0-30d)', '31-60 days', '61-90 days', '90+ days'].map(label => (
+                <div key={label} className="stat-card">
+                  <div><p className="stat-label">{label}</p><h2 className="stat-value">{formatCurrency(0)}</h2></div>
+                </div>
+              ))}
             </div>
-            <div className="stat-card">
-              <div><p className="stat-label">31-60 days</p><h2 className="stat-value stat-value-amber">{formatCurrency(agingSummary['31to60'])}</h2></div>
-            </div>
-            <div className="stat-card">
-              <div><p className="stat-label">61-90 days</p><h2 className="stat-value stat-value-purple">{formatCurrency(agingSummary['61to90'])}</h2></div>
-            </div>
-            <div className="stat-card">
-              <div><p className="stat-label">90+ days</p><h2 className="stat-value" style={{ color: '#dc2626' }}>{formatCurrency(agingSummary['90plus'])}</h2></div>
-            </div>
-          </div>
+          )}
 
           {/* Search */}
-          <div className="glass-panel p-4 mb-6">
+          <div className="glass-panel p-4 mb-6" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
             <div className="search-box" style={{ maxWidth: '350px' }}>
               <Search size={16} className="search-icon" />
               <input type="text" placeholder="Filter by client name..." value={agingSearch}
@@ -356,18 +405,18 @@ export default function ReportsView() {
                   </thead>
                   <tbody>
                     {agingSorted.map((r, i) => (
-                      <tr key={i} style={r.daysOverdue > 90 ? { background: '#fef2f2' } : r.daysOverdue > 30 ? { background: '#fffbeb' } : {}}>
+                      <tr key={i} className={r.daysOverdue > 90 ? 'row-overdue' : r.daysOverdue > 30 ? 'row-warning' : ''}>
                         <td className="font-medium">{r.clientName}</td>
                         <td><span className="invoice-badge">{r.invoiceNumber}</span></td>
                         <td className="text-muted">{r.invoiceDate ? new Date(r.invoiceDate).toLocaleDateString('en-IN') : '-'}</td>
                         <td className="text-muted">{r.dueDate ? new Date(r.dueDate).toLocaleDateString('en-IN') : '-'}</td>
-                        <td style={{ textAlign: 'right' }}>{formatCurrency(r.totalAmount)}</td>
-                        <td style={{ textAlign: 'right' }} className="text-muted">{r.paidAmount > 0 ? formatCurrency(r.paidAmount) : '-'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>{formatCurrency(r.outstanding)}</td>
+                        <td style={{ textAlign: 'right' }}>{formatCurrency(r.totalAmount, r.currency)}</td>
+                        <td style={{ textAlign: 'right' }} className="text-muted">{r.paidAmount > 0 ? formatCurrency(r.paidAmount, r.currency) : '-'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>{formatCurrency(r.outstanding, r.currency)}</td>
                         <td style={{ textAlign: 'right' }}>
                           <span style={{
                             padding: '0.15rem 0.5rem', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
-                            background: r.daysOverdue > 90 ? '#fef2f2' : r.daysOverdue > 60 ? '#f5f3ff' : r.daysOverdue > 30 ? '#fffbeb' : '#ecfdf5',
+                            background: r.daysOverdue > 90 ? 'rgba(220,38,38,0.15)' : r.daysOverdue > 60 ? 'rgba(139,92,246,0.15)' : r.daysOverdue > 30 ? 'rgba(217,119,6,0.15)' : 'rgba(5,150,105,0.15)',
                             color: r.daysOverdue > 90 ? '#dc2626' : r.daysOverdue > 60 ? '#8b5cf6' : r.daysOverdue > 30 ? '#d97706' : '#059669',
                           }}>
                             {r.daysOverdue === 0 ? 'Current' : `${r.daysOverdue}d`}
@@ -376,15 +425,6 @@ export default function ReportsView() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
-                    <tr style={{ fontWeight: 'bold', borderTop: '2px solid var(--border)' }}>
-                      <td colSpan={4}>Total</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(agingSorted.reduce((s, r) => s + r.totalAmount, 0))}</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(agingSorted.reduce((s, r) => s + r.paidAmount, 0))}</td>
-                      <td style={{ textAlign: 'right', color: '#dc2626' }}>{formatCurrency(agingSummary.total)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             )}

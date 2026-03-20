@@ -25,7 +25,7 @@ function getFYOptions() {
 export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
   const [bills, setBills] = useState([]);
   const [filtered, setFiltered] = useState([]);
-  const [stats, setStats] = useState({ total: 0, tax: 0, count: 0, unpaid: 0 });
+  const [stats, setStats] = useState({ byCurrency: {}, count: 0 });
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -56,10 +56,17 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
       }
 
       setBills(data);
-      const totalAmount = data.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-      const totalTax = data.reduce((sum, b) => sum + (b.totalTaxAmount || 0), 0);
-      const unpaid = data.filter(b => b.status !== 'paid').reduce((sum, b) => sum + (b.totalAmount || 0) - (b.paidAmount || 0), 0);
-      setStats({ total: totalAmount, tax: totalTax, count: data.length, unpaid });
+
+      // Group totals by currency
+      const byCurrency = {};
+      for (const b of data) {
+        const cur = b.currency || b.data?.invoiceOptions?.currency || 'INR';
+        if (!byCurrency[cur]) byCurrency[cur] = { total: 0, tax: 0, unpaid: 0 };
+        byCurrency[cur].total += b.totalAmount || 0;
+        byCurrency[cur].tax += b.totalTaxAmount || 0;
+        if (b.status !== 'paid') byCurrency[cur].unpaid += (b.totalAmount || 0) - (b.paidAmount || 0);
+      }
+      setStats({ byCurrency, count: data.length });
     } catch {
       toast('Failed to load invoices', 'error');
     }
@@ -154,7 +161,7 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
       ...bill, payments, paidAmount: totalPaid,
       status: totalPaid >= bill.totalAmount ? 'paid' : 'partial',
     });
-    toast(`Payment of ${formatCurrency(amount)} recorded`, 'success');
+    toast(`Payment of ${formatCurrency(amount, bill.currency)} recorded`, 'success');
     setPaymentModal(null);
     loadBills();
   };
@@ -185,7 +192,7 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
     const clientName = bill.clientName || 'Sir/Madam';
     const dueDate = bill.data?.details?.dueDate ? new Date(bill.data.details.dueDate).toLocaleDateString('en-IN') : 'N/A';
     const businessName = profile?.businessName || 'Our Company';
-    const amount = formatCurrency(bill.totalAmount - (bill.paidAmount || 0));
+    const amount = formatCurrency(bill.totalAmount - (bill.paidAmount || 0), bill.currency);
     const msg = `Hi ${clientName}, this is a gentle reminder that Invoice ${bill.invoiceNumber} for ${amount} was due on ${dueDate}. Kindly arrange the payment at your earliest convenience. Thank you! - ${businessName}`;
     const encoded = encodeURIComponent(msg);
     const waUrl = phone ? `https://api.whatsapp.com/send?phone=${phone}&text=${encoded}` : `https://api.whatsapp.com/send?text=${encoded}`;
@@ -200,7 +207,13 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
   };
 
   const overdueBills = bills.filter(b => b.status === 'overdue');
-  const overdueTotal = overdueBills.reduce((sum, b) => sum + (b.totalAmount || 0) - (b.paidAmount || 0), 0);
+  // Group overdue totals by currency for banner display
+  const overdueByCurrency = {};
+  for (const b of overdueBills) {
+    const cur = b.currency || b.data?.invoiceOptions?.currency || 'INR';
+    overdueByCurrency[cur] = (overdueByCurrency[cur] || 0) + (b.totalAmount || 0) - (b.paidAmount || 0);
+  }
+  const overdueStr = Object.entries(overdueByCurrency).map(([cur, amt]) => formatCurrency(amt, cur)).join(' + ');
 
   return (
     <div className="dashboard-container">
@@ -221,7 +234,7 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
               {overdueBills.length} overdue invoice{overdueBills.length > 1 ? 's' : ''}
             </span>
             <span style={{ color: '#991b1b', marginLeft: 8, fontSize: '0.85rem' }}>
-              — {formatCurrency(overdueTotal)} outstanding
+              — {overdueStr} outstanding
             </span>
           </div>
           <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem', whiteSpace: 'nowrap' }}
@@ -252,7 +265,7 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
                         <span className="font-medium">{bill.clientName}</span>
                         <span className="text-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{bill.invoiceNumber}</span>
                         <span style={{ marginLeft: 8, fontWeight: 600, color: '#dc2626', fontSize: '0.85rem' }}>
-                          {formatCurrency(bill.totalAmount - (bill.paidAmount || 0))}
+                          {formatCurrency(bill.totalAmount - (bill.paidAmount || 0), bill.currency || bill.data?.invoiceOptions?.currency)}
                         </span>
                         {phone && <span className="text-muted" style={{ marginLeft: 8, fontSize: '0.75rem' }}>{phone}</span>}
                       </div>
@@ -275,15 +288,39 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
       <div className="stats-grid stats-grid-4">
         <div className="stat-card">
           <div className="stat-icon stat-icon-blue"><IndianRupee size={22} /></div>
-          <div><p className="stat-label">Total Invoiced</p><h2 className="stat-value">{formatCurrency(stats.total)}</h2></div>
+          <div style={{ flex: 1 }}>
+            <p className="stat-label">Total Invoiced</p>
+            {Object.entries(stats.byCurrency).map(([cur, v]) => (
+              <div key={cur} className="stat-value" style={{ fontSize: Object.keys(stats.byCurrency).length > 1 ? '1.1rem' : undefined }}>
+                {formatCurrency(v.total, cur)}
+              </div>
+            ))}
+            {Object.keys(stats.byCurrency).length === 0 && <h2 className="stat-value">—</h2>}
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-icon stat-icon-green"><TrendingUp size={22} /></div>
-          <div><p className="stat-label">Tax Collected</p><h2 className="stat-value stat-value-green">{formatCurrency(stats.tax)}</h2></div>
+          <div style={{ flex: 1 }}>
+            <p className="stat-label">Tax Collected</p>
+            {Object.entries(stats.byCurrency).map(([cur, v]) => (
+              <div key={cur} className="stat-value stat-value-green" style={{ fontSize: Object.keys(stats.byCurrency).length > 1 ? '1.1rem' : undefined }}>
+                {formatCurrency(v.tax, cur)}
+              </div>
+            ))}
+            {Object.keys(stats.byCurrency).length === 0 && <h2 className="stat-value stat-value-green">—</h2>}
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-icon stat-icon-amber"><Clock size={22} /></div>
-          <div><p className="stat-label">Outstanding</p><h2 className="stat-value stat-value-amber">{formatCurrency(stats.unpaid)}</h2></div>
+          <div style={{ flex: 1 }}>
+            <p className="stat-label">Outstanding</p>
+            {Object.entries(stats.byCurrency).map(([cur, v]) => (
+              <div key={cur} className="stat-value stat-value-amber" style={{ fontSize: Object.keys(stats.byCurrency).length > 1 ? '1.1rem' : undefined }}>
+                {formatCurrency(v.unpaid, cur)}
+              </div>
+            ))}
+            {Object.keys(stats.byCurrency).length === 0 && <h2 className="stat-value stat-value-amber">—</h2>}
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-icon stat-icon-purple"><Receipt size={22} /></div>
@@ -374,8 +411,9 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
                   const sc = STATUS_CONFIG[status] || STATUS_CONFIG.unpaid;
                   const isOverdue = status !== 'paid' && bill.data?.details?.dueDate && new Date(bill.data.details.dueDate) < new Date();
                   const daysOverdue = isOverdue ? Math.floor((new Date() - new Date(bill.data.details.dueDate)) / 86400000) : 0;
+                  const billCurrency = bill.currency || bill.data?.invoiceOptions?.currency || 'INR';
                   return (
-                    <tr key={bill.id} style={isOverdue || status === 'overdue' ? { background: '#fef2f2' } : {}}>
+                    <tr key={bill.id} className={isOverdue || status === 'overdue' ? 'row-overdue' : ''}>
                       <td className="text-muted">{new Date(bill.invoiceDate).toLocaleDateString('en-IN')}</td>
                       <td><span className="invoice-badge">{bill.invoiceNumber}</span></td>
                       <td><span className="type-badge">{(INVOICE_TYPES[bill.invoiceType || 'tax-invoice'])?.label}</span></td>
@@ -387,8 +425,11 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
                           </span>
                         )}
                       </td>
-                      <td className="font-bold">{formatCurrency(bill.totalAmount)}</td>
-                      <td className="text-muted">{(bill.paidAmount || 0) > 0 ? formatCurrency(bill.paidAmount) : '-'}</td>
+                      <td className="font-bold">
+                        {formatCurrency(bill.totalAmount, billCurrency)}
+                        {billCurrency !== 'INR' && <span style={{ marginLeft: 5, fontSize: '0.7rem', fontWeight: 600, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '1px 5px', borderRadius: 4 }}>{billCurrency}</span>}
+                      </td>
+                      <td className="text-muted">{(bill.paidAmount || 0) > 0 ? formatCurrency(bill.paidAmount, billCurrency) : '-'}</td>
                       <td>
                         <select className="status-select" value={isOverdue && status !== 'overdue' ? 'overdue' : status}
                           style={{ background: sc.bg, color: sc.color, borderColor: sc.color + '44' }}
@@ -430,9 +471,9 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h3 className="section-title">Record Payment</h3>
             <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
-              Invoice: <strong>{paymentModal.invoiceNumber}</strong> | Total: <strong>{formatCurrency(paymentModal.totalAmount)}</strong>
-              {(paymentModal.paidAmount || 0) > 0 && <> | Paid: <strong>{formatCurrency(paymentModal.paidAmount)}</strong></>}
-              {' '}| Balance: <strong style={{ color: '#dc2626' }}>{formatCurrency(paymentModal.totalAmount - (paymentModal.paidAmount || 0))}</strong>
+              Invoice: <strong>{paymentModal.invoiceNumber}</strong> | Total: <strong>{formatCurrency(paymentModal.totalAmount, paymentModal.currency)}</strong>
+              {(paymentModal.paidAmount || 0) > 0 && <> | Paid: <strong>{formatCurrency(paymentModal.paidAmount, paymentModal.currency)}</strong></>}
+              {' '}| Balance: <strong style={{ color: '#dc2626' }}>{formatCurrency(paymentModal.totalAmount - (paymentModal.paidAmount || 0), paymentModal.currency)}</strong>
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="form-group">
@@ -472,7 +513,7 @@ export default function Dashboard({ onNew, onEdit, onDuplicate, onConvert }) {
                   {paymentModal.payments.map((p, i) => (
                     <div key={i} className="payment-row">
                       <span>{new Date(p.date).toLocaleDateString('en-IN')}</span>
-                      <span className="font-bold">{formatCurrency(p.amount)}</span>
+                      <span className="font-bold">{formatCurrency(p.amount, paymentModal.currency)}</span>
                       <span className="text-muted">{p.mode}</span>
                       {p.note && <span className="text-muted">{p.note}</span>}
                     </div>

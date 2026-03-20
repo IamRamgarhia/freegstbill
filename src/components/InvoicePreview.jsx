@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import DOMPurify from 'dompurify';
-import { numberToWords, formatCurrency, INVOICE_TYPES } from '../utils';
+import { numberToWords, formatCurrency, INVOICE_TYPES, getCountryConfig } from '../utils';
 
 const InvoicePreview = React.forwardRef(({ profile, client, details, items, totals, invoiceType = 'tax-invoice', customTerms, customNotes, extraSections = [], options = {} }, ref) => {
   const businessState = profile?.state?.trim().toLowerCase();
@@ -103,7 +103,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
             {profile?.address && <p style={{ margin: 0 }}>{profile.address}</p>}
             {(profile?.city || profile?.pin) && <p style={{ margin: 0 }}>{[profile.city, profile.pin].filter(Boolean).join(' - ')}</p>}
             {showState && profile?.state && <p style={{ margin: 0 }}>{profile.state}</p>}
-            {showGSTIN && profile?.gstin && <p style={{ margin: 0 }}>GSTIN: {profile.gstin}</p>}
+            {showGSTIN && profile?.gstin && <p style={{ margin: 0 }}>{getCountryConfig(profile?.country).taxIdLabel}: {profile.gstin}</p>}
           </div>
         </div>
       </div>
@@ -132,7 +132,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
             {profile?.address && <p style={{ margin: 0 }}>{profile.address}</p>}
             {(profile?.city || profile?.pin) && <p style={{ margin: 0 }}>{[profile.city, profile.pin].filter(Boolean).join(' - ')}</p>}
             {showState && profile?.state && <p style={{ margin: 0 }}>{profile.state}</p>}
-            {showGSTIN && profile?.gstin && <p style={{ margin: 0 }}>GSTIN: {profile.gstin}</p>}
+            {showGSTIN && profile?.gstin && <p style={{ margin: 0 }}>{getCountryConfig(profile?.country).taxIdLabel}: {profile.gstin}</p>}
             {profile?.email && <p style={{ margin: 0 }}>{profile.email}</p>}
           </div>
         </div>
@@ -202,7 +202,7 @@ const InvoicePreview = React.forwardRef(({ profile, client, details, items, tota
             {client?.address && <p>{client.address}</p>}
             {(client?.city || client?.pin) && <p>{[client.city, client.pin].filter(Boolean).join(' - ')}</p>}
             {showState && client?.state && <p>{client.state}</p>}
-            {showGSTIN && client?.gstin && <p>GSTIN: <strong>{client.gstin}</strong></p>}
+            {showGSTIN && client?.gstin && <p>{getCountryConfig(profile?.country).taxIdLabel}: <strong>{client.gstin}</strong></p>}
           </div>
         </div>
         {showPlaceOfSupply && (

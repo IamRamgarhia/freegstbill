@@ -1,21 +1,28 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { INDIAN_STATES } from '../utils';
+import { COUNTRIES, getCountryConfig, getStatesForCountry } from '../utils';
 
-const emptyForm = { name: '', address: '', city: '', pin: '', state: '', gstin: '', email: '', phone: '' };
+const emptyForm = { name: '', address: '', city: '', pin: '', state: '', gstin: '', email: '', phone: '', country: 'India' };
 
 export default function ClientModal({ show, onClose, onSave, client, isEditing }) {
   const [form, setForm] = useState({ ...emptyForm });
 
   useEffect(() => {
     if (show && client) {
-      setForm({ name: client.name || '', address: client.address || '', city: client.city || '', pin: client.pin || '', state: client.state || '', gstin: client.gstin || '', email: client.email || '', phone: client.phone || '' });
+      setForm({
+        name: client.name || '', address: client.address || '', city: client.city || '',
+        pin: client.pin || '', state: client.state || '', gstin: client.gstin || '',
+        email: client.email || '', phone: client.phone || '', country: client.country || 'India',
+      });
     } else if (show) {
       setForm({ ...emptyForm });
     }
   }, [show, client]);
 
   if (!show) return null;
+
+  const cc = getCountryConfig(form.country);
+  const stateOptions = getStatesForCountry(form.country);
 
   const handleSave = () => {
     if (!form.name.trim()) return;
@@ -39,23 +46,33 @@ export default function ClientModal({ show, onClose, onSave, client, isEditing }
             <input type="text" className="form-input" value={form.address} onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))} placeholder="Street address, locality" />
           </div>
           <div className="form-group">
+            <label className="form-label">Country</label>
+            <select className="form-input" value={form.country} onChange={e => setForm(prev => ({ ...prev, country: e.target.value, state: '' }))}>
+              {COUNTRIES.map(c => <option key={c.code} value={c.name}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
             <label className="form-label">City</label>
             <input type="text" className="form-input" value={form.city} onChange={e => setForm(prev => ({ ...prev, city: e.target.value }))} placeholder="e.g. Mumbai" />
           </div>
           <div className="form-group">
-            <label className="form-label">PIN Code</label>
-            <input type="text" className="form-input" value={form.pin} onChange={e => setForm(prev => ({ ...prev, pin: e.target.value.replace(/\D/g, '') }))} placeholder="e.g. 400001" maxLength={6} />
+            <label className="form-label">{cc.postalLabel}</label>
+            <input type="text" className="form-input" value={form.pin} onChange={e => setForm(prev => ({ ...prev, pin: e.target.value }))} placeholder={cc.postalLabel} />
           </div>
           <div className="form-group">
-            <label className="form-label">State</label>
-            <select className="form-input" value={form.state} onChange={e => setForm(prev => ({ ...prev, state: e.target.value }))}>
-              <option value="">Select State</option>
-              {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <label className="form-label">{cc.stateLabel}</label>
+            {stateOptions.length > 0 ? (
+              <select className="form-input" value={form.state} onChange={e => setForm(prev => ({ ...prev, state: e.target.value }))}>
+                <option value="">Select {cc.stateLabel}</option>
+                {stateOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input type="text" className="form-input" value={form.state} onChange={e => setForm(prev => ({ ...prev, state: e.target.value }))} placeholder={cc.stateLabel} />
+            )}
           </div>
           <div className="form-group">
-            <label className="form-label">GSTIN</label>
-            <input type="text" className="form-input" value={form.gstin} onChange={e => setForm(prev => ({ ...prev, gstin: e.target.value.toUpperCase() }))} placeholder="e.g. 03AXXXX1234X1ZB" maxLength={15} />
+            <label className="form-label">{cc.taxIdLabel}</label>
+            <input type="text" className="form-input" value={form.gstin} onChange={e => setForm(prev => ({ ...prev, gstin: e.target.value.toUpperCase() }))} placeholder={cc.taxIdPlaceholder} maxLength={20} />
           </div>
           <div className="form-group">
             <label className="form-label">Email</label>
